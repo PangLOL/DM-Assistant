@@ -141,7 +141,7 @@ code {
   background: color-mix(in srgb, var(--theme-base) 78%, #fff);
   position: sticky;
   top: 0;
-  z-index: 40;
+  z-index: 80;
   animation: settle 0.6s ease both;
 }
 

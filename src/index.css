@@ -1185,10 +1185,29 @@ code {
 }
 
 .yt-hosts {
-  position: absolute;
-  width: 0;
-  height: 0;
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.yt-hosts iframe {
+  pointer-events: none !important;
+}
+
+.topbar {
+  z-index: 80;
+}
+
+.nav button,
+.location-toggle,
+.scene-picker > button {
+  position: relative;
+  z-index: 1;
 }
 
 @keyframes settle {

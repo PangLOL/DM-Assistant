@@ -6,7 +6,7 @@ import type { LocationSize } from '../types'
 const SIZES: LocationSize[] = ['tiny', 'small', 'medium', 'large', 'vast', 'custom']
 
 export function WorldView() {
-  const { data, addLocation, updateLocation, deleteLocation, setActiveLocation, addScene } =
+  const { data, addLocation, updateLocation, deleteLocation, toggleLocation, addScene } =
     useStore()
   const [selectedId, setSelectedId] = useState<string | null>(
     data.activeLocationId ?? data.locations[0]?.id ?? null,
@@ -43,7 +43,7 @@ export function WorldView() {
                 className={loc.id === selectedId ? 'is-active' : undefined}
                 onClick={() => {
                   setSelectedId(loc.id)
-                  setActiveLocation(loc.id)
+                  toggleLocation(loc.id)
                 }}
               >
                 <strong>{loc.name}</strong>

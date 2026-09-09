@@ -1,7 +1,20 @@
-import type { AppData, AudioClip, CharacterStats, Encounter, Location, Npc, Player, Scene } from '../types'
-import { emptyStats } from '../types'
+import type {
+  AppData,
+  AudioClip,
+  CharacterStats,
+  DashboardModule,
+  Encounter,
+  Location,
+  ModuleId,
+  Npc,
+  Player,
+  Scene,
+  ThemeConfig,
+} from '../types'
+import { DEFAULT_MODULES, DEFAULT_THEME, emptyStats } from '../types'
 
-const STORAGE_KEY = 'dm-assistant-data-v1'
+const STORAGE_KEY = 'dm-assistant-data-v2'
+const LEGACY_KEY = 'dm-assistant-data-v1'
 
 export function uid(): string {
   return crypto.randomUUID()
@@ -79,6 +92,62 @@ export function cloneStats(stats: CharacterStats): CharacterStats {
     buffs: [...stats.buffs],
     debuffs: [...stats.debuffs],
     traits: [...stats.traits],
+  }
+}
+
+function normalizeModules(modules: DashboardModule[] | undefined): DashboardModule[] {
+  const byId = new Map((modules ?? []).map((m) => [m.id, m]))
+  const ordered: DashboardModule[] = []
+  const seen = new Set<ModuleId>()
+
+  for (const m of modules ?? DEFAULT_MODULES) {
+    if (seen.has(m.id)) continue
+    seen.add(m.id)
+    ordered.push({ id: m.id, visible: m.visible !== false })
+  }
+  for (const def of DEFAULT_MODULES) {
+    if (!seen.has(def.id)) {
+      ordered.push({ ...def })
+      const existing = byId.get(def.id)
+      if (existing) ordered[ordered.length - 1].visible = existing.visible !== false
+    }
+  }
+  return ordered
+}
+
+function normalizeTheme(theme: Partial<ThemeConfig> | undefined): ThemeConfig {
+  return {
+    base: theme?.base || DEFAULT_THEME.base,
+    accent: theme?.accent || DEFAULT_THEME.accent,
+    text: theme?.text || DEFAULT_THEME.text,
+  }
+}
+
+export function normalizeData(raw: Partial<AppData>): AppData {
+  const locations = raw.locations ?? []
+  const scenes = raw.scenes ?? []
+  let activeLocationId = raw.activeLocationId ?? locations[0]?.id ?? null
+  if (activeLocationId && !locations.some((l) => l.id === activeLocationId)) {
+    activeLocationId = locations[0]?.id ?? null
+  }
+
+  let activeSceneId = raw.activeSceneId ?? null
+  if (activeSceneId) {
+    const scene = scenes.find((s) => s.id === activeSceneId)
+    if (!scene || (activeLocationId && scene.locationId !== activeLocationId)) {
+      activeSceneId = null
+    }
+  }
+
+  return {
+    locations,
+    scenes,
+    players: raw.players ?? [],
+    npcs: raw.npcs ?? [],
+    activeLocationId,
+    activeSceneId,
+    theme: normalizeTheme(raw.theme),
+    modules: normalizeModules(raw.modules),
   }
 }
 
@@ -196,25 +265,27 @@ const seedData = (): AppData => {
     },
   })
 
-  return {
+  return normalizeData({
     locations: [forest, tavern],
     scenes: [groveGate, commonRoom],
     players: [player],
     npcs: [scout, keeper],
     activeLocationId: forest.id,
-    activeSceneId: groveGate.id,
-  }
+    activeSceneId: null,
+    theme: DEFAULT_THEME,
+    modules: DEFAULT_MODULES,
+  })
 }
 
 export function loadData(): AppData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
     if (!raw) return seedData()
-    const parsed = JSON.parse(raw) as AppData
+    const parsed = JSON.parse(raw) as Partial<AppData>
     if (!parsed.locations || !parsed.scenes || !parsed.players || !parsed.npcs) {
       return seedData()
     }
-    return parsed
+    return normalizeData(parsed)
   } catch {
     return seedData()
   }
@@ -229,18 +300,11 @@ export function exportData(data: AppData): string {
 }
 
 export function importData(json: string): AppData {
-  const parsed = JSON.parse(json) as AppData
+  const parsed = JSON.parse(json) as Partial<AppData>
   if (!parsed.locations || !parsed.scenes || !parsed.players || !parsed.npcs) {
     throw new Error('Invalid DM Assistant data')
   }
-  return {
-    activeLocationId: parsed.activeLocationId ?? null,
-    activeSceneId: parsed.activeSceneId ?? null,
-    locations: parsed.locations,
-    scenes: parsed.scenes,
-    players: parsed.players,
-    npcs: parsed.npcs,
-  }
+  return normalizeData(parsed)
 }
 
 export function clipSummary(clip: AudioClip | null | undefined): string {

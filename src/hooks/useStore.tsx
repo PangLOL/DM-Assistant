@@ -21,16 +21,22 @@ import type {
   AppData,
   AudioClip,
   CharacterStats,
+  DashboardModule,
   Encounter,
   Location,
+  ModuleId,
   Npc,
   Player,
   Scene,
+  ThemeConfig,
 } from '../types'
+import { DEFAULT_MODULES, DEFAULT_THEME } from '../types'
 
 type StoreContextValue = {
   data: AppData
-  setActiveLocation: (id: string | null) => void
+  /** Toggle a location on; resets scene to Default. Passing the same id keeps it on. */
+  toggleLocation: (id: string) => void
+  /** `null` selects the location Default scene. */
   setActiveScene: (id: string | null) => void
   addLocation: () => string
   updateLocation: (id: string, patch: Partial<Location>) => void
@@ -49,6 +55,11 @@ type StoreContextValue = {
   updateNpc: (id: string, patch: Partial<Npc>) => void
   updateNpcStats: (id: string, patch: Partial<CharacterStats>) => void
   deleteNpc: (id: string) => void
+  updateTheme: (patch: Partial<ThemeConfig>) => void
+  resetTheme: () => void
+  setModuleVisible: (id: ModuleId, visible: boolean) => void
+  reorderModules: (fromIndex: number, toIndex: number) => void
+  resetModules: () => void
   replaceAll: (next: AppData) => void
   resetToSeed: () => void
   importJson: (json: string) => void
@@ -67,17 +78,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     saveData(data)
   }, [data])
 
-  const setActiveLocation = useCallback((id: string | null) => {
-    setData((d) => ({ ...d, activeLocationId: id }))
+  const toggleLocation = useCallback((id: string) => {
+    setData((d) => ({
+      ...d,
+      activeLocationId: id,
+      // Always land on Default when switching location
+      activeSceneId: d.activeLocationId === id ? d.activeSceneId : null,
+    }))
   }, [])
 
   const setActiveScene = useCallback((id: string | null) => {
     setData((d) => {
+      if (id == null) return { ...d, activeSceneId: null }
       const scene = d.scenes.find((s) => s.id === id)
+      if (!scene) return d
       return {
         ...d,
         activeSceneId: id,
-        activeLocationId: scene?.locationId ?? d.activeLocationId,
+        activeLocationId: scene.locationId,
       }
     })
   }, [])
@@ -88,6 +106,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...d,
       locations: [...d.locations, loc],
       activeLocationId: loc.id,
+      activeSceneId: null,
     }))
     return loc.id
   }, [])
@@ -100,15 +119,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData((d) => {
       const locations = d.locations.filter((l) => l.id !== id)
       const scenes = d.scenes.filter((s) => s.locationId !== id)
+      const activeLocationId =
+        d.activeLocationId === id ? locations[0]?.id ?? null : d.activeLocationId
       return {
         ...d,
         locations,
         scenes,
-        activeLocationId: d.activeLocationId === id ? locations[0]?.id ?? null : d.activeLocationId,
-        activeSceneId:
-          d.activeSceneId && scenes.some((s) => s.id === d.activeSceneId)
-            ? d.activeSceneId
-            : scenes[0]?.id ?? null,
+        activeLocationId,
+        activeSceneId: d.activeLocationId === id ? null : d.activeSceneId,
       }
     })
   }, [])
@@ -134,7 +152,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return {
         ...d,
         scenes,
-        activeSceneId: d.activeSceneId === id ? scenes[0]?.id ?? null : d.activeSceneId,
+        activeSceneId: d.activeSceneId === id ? null : d.activeSceneId,
       }
     })
   }, [])
@@ -235,9 +253,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const updateTheme = useCallback((patch: Partial<ThemeConfig>) => {
+    setData((d) => ({ ...d, theme: { ...d.theme, ...patch } }))
+  }, [])
+
+  const resetTheme = useCallback(() => {
+    setData((d) => ({ ...d, theme: { ...DEFAULT_THEME } }))
+  }, [])
+
+  const setModuleVisible = useCallback((id: ModuleId, visible: boolean) => {
+    setData((d) => ({
+      ...d,
+      modules: d.modules.map((m) => (m.id === id ? { ...m, visible } : m)),
+    }))
+  }, [])
+
+  const reorderModules = useCallback((fromIndex: number, toIndex: number) => {
+    setData((d) => {
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= d.modules.length ||
+        toIndex >= d.modules.length
+      ) {
+        return d
+      }
+      const modules = [...d.modules]
+      const [item] = modules.splice(fromIndex, 1)
+      modules.splice(toIndex, 0, item)
+      return { ...d, modules }
+    })
+  }, [])
+
+  const resetModules = useCallback(() => {
+    setData((d) => ({ ...d, modules: DEFAULT_MODULES.map((m) => ({ ...m })) }))
+  }, [])
+
   const replaceAll = useCallback((next: AppData) => setData(next), [])
 
   const resetToSeed = useCallback(() => {
+    localStorage.removeItem('dm-assistant-data-v2')
     localStorage.removeItem('dm-assistant-data-v1')
     setData(loadData())
   }, [])
@@ -249,7 +305,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       data,
-      setActiveLocation,
+      toggleLocation,
       setActiveScene,
       addLocation,
       updateLocation,
@@ -268,13 +324,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateNpc,
       updateNpcStats,
       deleteNpc,
+      updateTheme,
+      resetTheme,
+      setModuleVisible,
+      reorderModules,
+      resetModules,
       replaceAll,
       resetToSeed,
       importJson,
     }),
     [
       data,
-      setActiveLocation,
+      toggleLocation,
       setActiveScene,
       addLocation,
       updateLocation,
@@ -293,6 +354,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateNpc,
       updateNpcStats,
       deleteNpc,
+      updateTheme,
+      resetTheme,
+      setModuleVisible,
+      reorderModules,
+      resetModules,
       replaceAll,
       resetToSeed,
       importJson,
@@ -308,17 +374,29 @@ export function useStore() {
   return ctx
 }
 
-export function useResolvedAudio(scene: Scene | undefined, location: Location | undefined) {
-  const music: AudioClip | null = scene?.music?.youtubeUrl
+/** Resolve weather/audio for Default scene mode or a custom scene. */
+export function useResolvedScene() {
+  const { data } = useStore()
+  const location = data.locations.find((l) => l.id === data.activeLocationId)
+  const isDefault = data.activeSceneId == null
+  const scene = isDefault
+    ? undefined
+    : data.scenes.find((s) => s.id === data.activeSceneId)
+
+  const music: AudioClip | null = !isDefault && scene?.music?.youtubeUrl
     ? scene.music
     : location?.defaultMusic?.youtubeUrl
       ? location.defaultMusic
       : null
-  const ambience: AudioClip | null = scene?.ambience?.youtubeUrl
+  const ambience: AudioClip | null = !isDefault && scene?.ambience?.youtubeUrl
     ? scene.ambience
     : location?.defaultAmbience?.youtubeUrl
       ? location.defaultAmbience
       : null
-  const weather = scene?.weather?.trim() || location?.defaultWeather || '—'
-  return { music, ambience, weather }
+  const weather =
+    (!isDefault && scene?.weather?.trim()) || location?.defaultWeather || '—'
+
+  return { location, scene, isDefault, music, ambience, weather }
 }
+
+export type { DashboardModule }

@@ -79,22 +79,69 @@ export type Scene = {
   npcIds: string[]
 }
 
+/** Dashboard modules the user can show/hide and reorder. */
+export type ModuleId = 'place' | 'soundscape' | 'party' | 'cast' | 'encounters'
+
+export type DashboardModule = {
+  id: ModuleId
+  visible: boolean
+}
+
+export type ThemeConfig = {
+  /** Page / panel surface base color */
+  base: string
+  /** Accent / interactive color */
+  accent: string
+  /** Primary text color */
+  text: string
+}
+
 export type AppData = {
   locations: Location[]
   scenes: Scene[]
   players: Player[]
   npcs: Npc[]
+  /** Currently toggled location (only one). */
   activeLocationId: string | null
+  /**
+   * Active scene within the toggled location.
+   * `null` means the location's Default scene (defaults for weather/audio/atmosphere).
+   */
   activeSceneId: string | null
+  theme: ThemeConfig
+  modules: DashboardModule[]
 }
 
 export type NavView =
-  | 'session'
+  | 'dashboard'
   | 'world'
   | 'scenes'
   | 'players'
   | 'npcs'
   | 'audio'
+  | 'customize'
+
+export const MODULE_LABELS: Record<ModuleId, string> = {
+  place: 'Place & scene',
+  soundscape: 'Soundscape',
+  party: 'Party tracker',
+  cast: 'Scene cast',
+  encounters: 'Encounters',
+}
+
+export const DEFAULT_THEME: ThemeConfig = {
+  base: '#e7eef0',
+  accent: '#1f4a42',
+  text: '#142824',
+}
+
+export const DEFAULT_MODULES: DashboardModule[] = [
+  { id: 'place', visible: true },
+  { id: 'soundscape', visible: true },
+  { id: 'party', visible: true },
+  { id: 'cast', visible: true },
+  { id: 'encounters', visible: true },
+]
 
 export const emptyAudioClip = (): AudioClip => ({
   youtubeUrl: '',

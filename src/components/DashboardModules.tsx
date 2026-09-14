@@ -92,7 +92,12 @@ export function PartyModule() {
         return (
           <li key={p.id}>
             <div className="tracker-strip__head">
-              <strong>{p.name}</strong>
+              <span className="tracker-strip__who">
+                {p.portraitDataUrl ? (
+                  <img className="tracker-strip__portrait" src={p.portraitDataUrl} alt="" />
+                ) : null}
+                <strong>{p.name}</strong>
+              </span>
               <span>{p.role || 'Adventurer'}</span>
             </div>
             <div className="hp-bar">

@@ -21,14 +21,17 @@ export function toCsv(headers: string[], rows: Array<Record<string, string | num
   return `${lines.join('\n')}\n`
 }
 
-export function downloadText(filename: string, text: string, mime = 'text/csv;charset=utf-8') {
-  const blob = new Blob([text], { type: mime })
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+export function downloadText(filename: string, text: string, mime = 'text/csv;charset=utf-8') {
+  downloadBlob(filename, new Blob([text], { type: mime }))
 }
 
 export function dataUrlToBlob(dataUrl: string): Blob | null {

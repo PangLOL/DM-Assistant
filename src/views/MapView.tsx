@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { CharacterSheet } from '../components/CharacterSheet'
 import { blobToDataUrl } from '../lib/csv'
 import { rollD20 } from '../lib/rules5e'
 import { useRole } from '../hooks/useRole'
@@ -52,12 +53,25 @@ export function MapView() {
     return data.npcs.find((n) => n.id === id)?.name ?? 'NPC'
   }
 
+  const tokenPortrait = (kind: TokenKind, id: string) => {
+    if (kind !== 'player') return ''
+    return data.players.find((p) => p.id === id)?.portraitDataUrl ?? ''
+  }
+
+  const selectedPlayer =
+    actor?.kind === 'player' ? (data.players.find((p) => p.id === actor.id) ?? null) : null
+
   const actors = useMemo(() => {
+    const party = data.players.map((p) => ({
+      key: `player:${p.id}`,
+      label: `${p.name} (player)`,
+    }))
+    if (role === 'player') return party
     return [
-      ...data.players.map((p) => ({ key: `player:${p.id}`, label: `${p.name} (player)` })),
+      ...party,
       ...data.npcs.map((n) => ({ key: `npc:${n.id}`, label: `${n.name} (${n.kind})` })),
     ]
-  }, [data.players, data.npcs])
+  }, [data.players, data.npcs, role])
 
   const onCell = (x: number, y: number) => {
     if (!map) return
@@ -303,6 +317,12 @@ export function MapView() {
         ) : null}
       </div>
 
+      {selectedPlayer ? (
+        <div className="player-sheet-wrap player-sheet-wrap--map">
+          <CharacterSheet player={selectedPlayer} compact />
+        </div>
+      ) : null}
+
       {map ? (
         <div
           className="map-board"
@@ -327,7 +347,11 @@ export function MapView() {
                 >
                   {tok ? (
                     <span className={`token token--${tok.kind}`}>
-                      {tokenLabel(tok.kind, tok.characterId).slice(0, 3)}
+                      {tokenPortrait(tok.kind, tok.characterId) ? (
+                        <img src={tokenPortrait(tok.kind, tok.characterId)} alt="" />
+                      ) : (
+                        tokenLabel(tok.kind, tok.characterId).slice(0, 3)
+                      )}
                     </span>
                   ) : null}
                 </button>

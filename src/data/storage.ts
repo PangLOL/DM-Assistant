@@ -71,6 +71,7 @@ export function createPlayer(partial?: Partial<Player>): Player {
     backstory: '',
     stats: emptyStats(),
     notes: '',
+    portraitDataUrl: '',
     ...partial,
   }
 }
@@ -218,6 +219,7 @@ export function normalizeData(raw: Partial<AppData>): AppData {
     players: (raw.players ?? []).map((p) => ({
       ...p,
       backstory: p.backstory ?? '',
+      portraitDataUrl: p.portraitDataUrl ?? '',
       stats: normalizeStats(p.stats),
     })),
     npcs: (raw.npcs ?? []).map((n) => ({

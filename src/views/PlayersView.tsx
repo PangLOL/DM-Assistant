@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
-import { exportCharacterCsv } from '../data/campaignCsv'
-import { downloadText } from '../lib/csv'
+import { CharacterSheet } from '../components/CharacterSheet'
+import { PortraitPicker } from '../components/PortraitPicker'
+import { downloadAllCharacterHandouts, downloadCharacterHandout } from '../data/campaignCsv'
 import { useStore } from '../hooks/useStore'
 import { StatEditor } from '../components/StatEditor'
 
@@ -32,6 +33,14 @@ export function PlayersView() {
           <button type="button" className="btn btn--sm" onClick={() => fileRef.current?.click()}>
             Import CSV
           </button>
+          <button
+            type="button"
+            className="btn btn--sm"
+            disabled={data.players.length === 0}
+            onClick={() => downloadAllCharacterHandouts(data.players)}
+          >
+            Hand out character files
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -58,9 +67,14 @@ export function PlayersView() {
                 className={p.id === selectedId ? 'is-active' : undefined}
                 onClick={() => setSelectedId(p.id)}
               >
-                <strong>{p.name}</strong>
-                <span>
-                  {p.role || 'No role'} · {p.stats.hp}/{p.stats.maxHp} HP
+                {p.portraitDataUrl ? (
+                  <img className="entity-list__portrait" src={p.portraitDataUrl} alt="" />
+                ) : null}
+                <span className="entity-list__copy">
+                  <strong>{p.name}</strong>
+                  <span>
+                    {p.role || 'No role'} · {p.stats.hp}/{p.stats.maxHp} HP
+                  </span>
                 </span>
               </button>
             </li>
@@ -82,12 +96,7 @@ export function PlayersView() {
                 <button
                   type="button"
                   className="btn"
-                  onClick={() =>
-                    downloadText(
-                      `${player.name.replace(/\s+/g, '-')}.csv`,
-                      exportCharacterCsv(player),
-                    )
-                  }
+                  onClick={() => downloadCharacterHandout(player)}
                 >
                   Export CSV
                 </button>
@@ -106,7 +115,16 @@ export function PlayersView() {
               </div>
             </header>
 
+            <CharacterSheet player={player} compact />
+
             <div className="form-grid">
+              <div className="field field--full">
+                <span>Portrait</span>
+                <PortraitPicker
+                  value={player.portraitDataUrl}
+                  onChange={(portraitDataUrl) => updatePlayer(player.id, { portraitDataUrl })}
+                />
+              </div>
               <label className="field">
                 <span>Name</span>
                 <input

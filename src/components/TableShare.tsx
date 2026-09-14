@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { playerJoinUrl } from '../lib/role'
 import { broadcast, hostTable, randomRoomCode, type DataConn, type TableMsg } from '../lib/tableSync'
 import { useStore } from '../hooks/useStore'
 
@@ -60,9 +61,7 @@ export function TableShare() {
       })
       peerRef.current = peer
       setRoom(code)
-      const url = new URL('play.html', window.location.href)
-      url.searchParams.set('room', code)
-      setPlayerUrl(url.toString())
+      setPlayerUrl(playerJoinUrl(code))
       setStatus('Waiting for players…')
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Could not open table')

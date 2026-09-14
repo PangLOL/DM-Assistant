@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react'
 import {
+  downloadAllCharacterHandouts,
   exportConfigCsv,
   exportMapsCsv,
   exportMusicCsv,
@@ -169,8 +170,26 @@ export function CustomizeView() {
           <h3>Campaign backup (CSV)</h3>
           <p className="hint">
             Optional downloads for your records. Live play does not use a shared folder — open a
-            player table from the Map screen and send a room code.
+            player table from the Map screen and send a room code. After a session, hand out one
+            CSV per character so players can import their updated sheet.
           </p>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn--accent"
+              disabled={data.players.length === 0}
+              onClick={() => {
+                downloadAllCharacterHandouts(data.players)
+                setMessage(
+                  data.players.length === 1
+                    ? 'Downloaded 1 character file'
+                    : `Downloaded ${data.players.length} character files`,
+                )
+              }}
+            >
+              Hand out character files
+            </button>
+          </div>
           <div className="btn-row">
             <button
               type="button"

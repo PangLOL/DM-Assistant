@@ -56,6 +56,8 @@ export type Player = {
   backstory: string
   stats: CharacterStats
   notes: string
+  /** Resized JPEG/PNG data URL stored in CSV + localStorage (no image host). */
+  portraitDataUrl: string
 }
 
 export type NpcKind = 'enemy' | 'npc' | 'ally'

@@ -11,7 +11,8 @@ import type {
   WalkCell,
 } from '../types'
 import { DEFAULT_MODULES, DEFAULT_THEME, emptyStats } from '../types'
-import { parseCsv, toCsv } from '../lib/csv'
+import { downloadText, parseCsv, toCsv } from '../lib/csv'
+import { downloadPortraitFile, safeCharacterFilename, sanitizePortraitDataUrl } from '../lib/portrait'
 import { createPlayer, uid } from './storage'
 
 export type CampaignSlice = 'config' | 'music' | 'map' | 'save'
@@ -300,6 +301,7 @@ const SAVE_HEADERS = [
   'buffs',
   'debuffs',
   'skills',
+  'portrait',
 ]
 
 export function exportSaveCsv(data: AppData): string {
@@ -316,6 +318,7 @@ export function exportSaveCsv(data: AppData): string {
       personality: p.personality,
       backstory: p.backstory,
       notes: p.notes,
+      portrait: p.portraitDataUrl,
       ...statsToRow(p.stats),
     })
   })
@@ -379,6 +382,7 @@ export function applySaveCsv(data: AppData, csv: string): AppData {
         personality: row.personality || '',
         backstory: row.backstory || '',
         notes: row.notes || '',
+        portraitDataUrl: sanitizePortraitDataUrl(row.portrait),
         stats: statsFromRow(row),
       })
     } else if (row.rowType === 'npc') {
@@ -447,6 +451,7 @@ export function exportCharacterCsv(player: Player): string {
       'buffs',
       'debuffs',
       'skills',
+      'portrait',
     ],
     [
       {
@@ -455,6 +460,7 @@ export function exportCharacterCsv(player: Player): string {
         personality: player.personality,
         backstory: player.backstory,
         notes: player.notes,
+        portrait: player.portraitDataUrl,
         ...statsToRow(player.stats),
       },
     ],
@@ -471,8 +477,22 @@ export function parseCharacterCsv(csv: string): Player {
     personality: row.personality || '',
     backstory: row.backstory || '',
     notes: row.notes || '',
+    portraitDataUrl: sanitizePortraitDataUrl(row.portrait),
     stats: statsFromRow(row),
   })
+}
+
+export function downloadCharacterHandout(player: Player) {
+  const base = safeCharacterFilename(player.name)
+  downloadText(`${base}.csv`, exportCharacterCsv(player))
+  if (player.portraitDataUrl) {
+    downloadPortraitFile(player.name, player.portraitDataUrl)
+  }
+}
+
+/** One CSV (and portrait file) per player for after-session handouts. */
+export function downloadAllCharacterHandouts(players: Player[]) {
+  players.forEach((player) => downloadCharacterHandout(player))
 }
 
 export function parseMasterCsv(csv: string): Record<CampaignSlice, string> {

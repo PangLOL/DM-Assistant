@@ -5,6 +5,8 @@ import type {
   DashboardModule,
   Encounter,
   Location,
+  MapBoard,
+  MapToken,
   ModuleId,
   Npc,
   Player,
@@ -13,8 +15,8 @@ import type {
 } from '../types'
 import { DEFAULT_MODULES, DEFAULT_THEME, emptyStats } from '../types'
 
-const STORAGE_KEY = 'dm-assistant-data-v2'
-const LEGACY_KEY = 'dm-assistant-data-v1'
+const STORAGE_KEY = 'dm-assistant-data-v3'
+const LEGACY_KEYS = ['dm-assistant-data-v2', 'dm-assistant-data-v1']
 
 export function uid(): string {
   return crypto.randomUUID()
@@ -66,6 +68,7 @@ export function createPlayer(partial?: Partial<Player>): Player {
     name: 'New Player',
     role: '',
     personality: '',
+    backstory: '',
     stats: emptyStats(),
     notes: '',
     ...partial,
@@ -85,6 +88,32 @@ export function createNpc(partial?: Partial<Npc>): Npc {
   }
 }
 
+export function createMap(locationId: string, partial?: Partial<MapBoard>): MapBoard {
+  return {
+    id: uid(),
+    locationId,
+    name: 'New map',
+    cols: 25,
+    rows: 25,
+    squareFeet: 5,
+    imageName: '',
+    imageDataUrl: '',
+    walkable: [],
+    ...partial,
+  }
+}
+
+export function createToken(partial: Omit<MapToken, 'id'> & { id?: string }): MapToken {
+  return {
+    id: partial.id ?? uid(),
+    kind: partial.kind,
+    characterId: partial.characterId,
+    mapId: partial.mapId,
+    gx: partial.gx,
+    gy: partial.gy,
+  }
+}
+
 export function cloneStats(stats: CharacterStats): CharacterStats {
   return {
     ...stats,
@@ -95,21 +124,52 @@ export function cloneStats(stats: CharacterStats): CharacterStats {
   }
 }
 
+export function normalizeStats(stats: Partial<CharacterStats> | undefined): CharacterStats {
+  const base = emptyStats()
+  const merged = { ...base, ...stats }
+  merged.skills = (stats?.skills ?? []).map((s) => ({ ...s }))
+  merged.buffs = [...(stats?.buffs ?? [])]
+  merged.debuffs = [...(stats?.debuffs ?? [])]
+  merged.traits = [...(stats?.traits ?? [])]
+  if (stats?.ac == null && stats?.armor != null) {
+    merged.ac = stats.armor > 0 ? 10 + Number(stats.armor) : 10
+  }
+  if (stats?.attackBonus == null && stats?.attack != null) {
+    merged.attackBonus = Number(stats.attack)
+  }
+  return merged
+}
+
 function normalizeModules(modules: DashboardModule[] | undefined): DashboardModule[] {
   const byId = new Map((modules ?? []).map((m) => [m.id, m]))
   const ordered: DashboardModule[] = []
   const seen = new Set<ModuleId>()
 
-  for (const m of modules ?? DEFAULT_MODULES) {
+  const source = modules ?? DEFAULT_MODULES
+  for (const m of source) {
     if (seen.has(m.id)) continue
     seen.add(m.id)
-    ordered.push({ id: m.id, visible: m.visible !== false })
+    const def = DEFAULT_MODULES.find((d) => d.id === m.id) ?? DEFAULT_MODULES[0]
+    ordered.push({
+      id: m.id,
+      visible: m.visible !== false,
+      x: m.x ?? def.x,
+      y: m.y ?? def.y,
+      w: m.w ?? def.w,
+      h: m.h ?? def.h,
+    })
   }
   for (const def of DEFAULT_MODULES) {
     if (!seen.has(def.id)) {
-      ordered.push({ ...def })
       const existing = byId.get(def.id)
-      if (existing) ordered[ordered.length - 1].visible = existing.visible !== false
+      ordered.push({
+        ...def,
+        visible: existing ? existing.visible !== false : def.visible,
+        x: existing?.x ?? def.x,
+        y: existing?.y ?? def.y,
+        w: existing?.w ?? def.w,
+        h: existing?.h ?? def.h,
+      })
     }
   }
   return ordered
@@ -139,13 +199,38 @@ export function normalizeData(raw: Partial<AppData>): AppData {
     }
   }
 
+  const maps = (raw.maps ?? []).map((m) => ({
+    ...m,
+    walkable: m.walkable ?? [],
+    imageDataUrl: m.imageDataUrl ?? '',
+    imageName: m.imageName ?? '',
+    squareFeet: m.squareFeet || 5,
+  }))
+
+  let activeMapId = raw.activeMapId ?? maps.find((m) => m.locationId === activeLocationId)?.id ?? maps[0]?.id ?? null
+  if (activeMapId && !maps.some((m) => m.id === activeMapId)) {
+    activeMapId = maps[0]?.id ?? null
+  }
+
   return {
     locations,
     scenes,
-    players: raw.players ?? [],
-    npcs: raw.npcs ?? [],
+    players: (raw.players ?? []).map((p) => ({
+      ...p,
+      backstory: p.backstory ?? '',
+      stats: normalizeStats(p.stats),
+    })),
+    npcs: (raw.npcs ?? []).map((n) => ({
+      ...n,
+      stats: normalizeStats(n.stats),
+    })),
+    maps,
+    tokens: raw.tokens ?? [],
+    pendingAction: raw.pendingAction ?? null,
     activeLocationId,
     activeSceneId,
+    activeMapId,
+    workspaceMode: raw.workspaceMode === 'map' ? 'map' : 'desktop',
     theme: normalizeTheme(raw.theme),
     modules: normalizeModules(raw.modules),
   }
@@ -194,6 +279,11 @@ const seedData = (): AppData => {
       armor: 1,
       attack: 3,
       initiative: 2,
+      ac: 13,
+      speedFt: 30,
+      attackBonus: 3,
+      damageDice: '1d6+1',
+      rangeFt: 5,
       traits: ['Stealthy', 'Cowardly'],
       skills: [
         { id: uid(), name: 'Stealth', points: 4 },
@@ -211,6 +301,7 @@ const seedData = (): AppData => {
       ...emptyStats(),
       hp: 12,
       maxHp: 12,
+      ac: 10,
       traits: ['Well-connected'],
       skills: [{ id: uid(), name: 'Persuasion', points: 3 }],
     },
@@ -247,6 +338,7 @@ const seedData = (): AppData => {
     name: 'Aerin Sol',
     role: 'Ranger',
     personality: 'Quiet, loyal, dry humor',
+    backstory: 'A grove warden who tracks pilgrims missing on the shrine road.',
     stats: {
       ...emptyStats(),
       hp: 18,
@@ -255,6 +347,11 @@ const seedData = (): AppData => {
       armor: 2,
       attack: 5,
       initiative: 3,
+      ac: 14,
+      speedFt: 30,
+      attackBonus: 5,
+      damageDice: '1d8+3',
+      rangeFt: 150,
       traits: ['Tracker', 'Beast affinity'],
       skills: [
         { id: uid(), name: 'Survival', points: 5 },
@@ -265,13 +362,35 @@ const seedData = (): AppData => {
     },
   })
 
+  const groveMap = createMap(forest.id, {
+    name: 'Grove path',
+    cols: 12,
+    rows: 12,
+    imageName: 'grove-path.png',
+    walkable: (() => {
+      const cells = []
+      for (let y = 2; y <= 9; y++) {
+        for (let x = 2; x <= 9; x++) cells.push({ x, y })
+      }
+      return cells
+    })(),
+  })
+
   return normalizeData({
     locations: [forest, tavern],
     scenes: [groveGate, commonRoom],
     players: [player],
     npcs: [scout, keeper],
+    maps: [groveMap],
+    tokens: [
+      createToken({ kind: 'player', characterId: player.id, mapId: groveMap.id, gx: 3, gy: 8 }),
+      createToken({ kind: 'npc', characterId: scout.id, mapId: groveMap.id, gx: 8, gy: 3 }),
+    ],
+    pendingAction: null,
     activeLocationId: forest.id,
     activeSceneId: null,
+    activeMapId: groveMap.id,
+    workspaceMode: 'desktop',
     theme: DEFAULT_THEME,
     modules: DEFAULT_MODULES,
   })
@@ -279,7 +398,13 @@ const seedData = (): AppData => {
 
 export function loadData(): AppData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
+    let raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      for (const key of LEGACY_KEYS) {
+        raw = localStorage.getItem(key)
+        if (raw) break
+      }
+    }
     if (!raw) return seedData()
     const parsed = JSON.parse(raw) as Partial<AppData>
     if (!parsed.locations || !parsed.scenes || !parsed.players || !parsed.npcs) {
@@ -312,4 +437,42 @@ export function clipSummary(clip: AudioClip | null | undefined): string {
   const label = clip.label?.trim() || 'YouTube clip'
   const out = clip.outPoint == null ? 'end' : `${clip.outPoint}s`
   return `${label} (${clip.inPoint}s → ${out})`
+}
+
+export function emptyPlayData(): AppData {
+  return normalizeData({
+    locations: [],
+    scenes: [],
+    players: [],
+    npcs: [],
+    maps: [],
+    tokens: [],
+    pendingAction: null,
+    activeLocationId: null,
+    activeSceneId: null,
+    activeMapId: null,
+    workspaceMode: 'map',
+    theme: DEFAULT_THEME,
+    modules: DEFAULT_MODULES,
+  })
+}
+
+export function loadPlayData(): AppData {
+  try {
+    const raw = localStorage.getItem('dm-assistant-play-v3')
+    if (!raw) return emptyPlayData()
+    return normalizeData(JSON.parse(raw) as Partial<AppData>)
+  } catch {
+    return emptyPlayData()
+  }
+}
+
+export function savePlayData(data: AppData) {
+  localStorage.setItem('dm-assistant-play-v3', JSON.stringify(data))
+}
+
+export function resetStorageKeys() {
+  localStorage.removeItem(STORAGE_KEY)
+  localStorage.removeItem('dm-assistant-play-v3')
+  LEGACY_KEYS.forEach((k) => localStorage.removeItem(k))
 }

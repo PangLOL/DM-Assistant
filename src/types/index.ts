@@ -37,6 +37,15 @@ export type CharacterStats = {
   armor: number
   attack: number
   initiative: number
+  /** D&D 5e-lite armor class */
+  ac: number
+  /** Walking speed in feet (5 ft per square) */
+  speedFt: number
+  attackBonus: number
+  /** e.g. 1d8+3 */
+  damageDice: string
+  /** Attack reach/range in feet */
+  rangeFt: number
 }
 
 export type Player = {
@@ -44,6 +53,7 @@ export type Player = {
   name: string
   role: string
   personality: string
+  backstory: string
   stats: CharacterStats
   notes: string
 }
@@ -79,35 +89,95 @@ export type Scene = {
   npcIds: string[]
 }
 
-/** Dashboard modules the user can show/hide and reorder. */
+/** Dashboard modules the user can show/hide and place on a 2D desktop. */
 export type ModuleId = 'place' | 'soundscape' | 'party' | 'cast' | 'encounters'
 
 export type DashboardModule = {
   id: ModuleId
   visible: boolean
+  /** Percent of the desktop canvas (0–100). */
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 export type ThemeConfig = {
-  /** Page / panel surface base color */
   base: string
-  /** Accent / interactive color */
   accent: string
-  /** Primary text color */
   text: string
 }
+
+export type WalkCell = {
+  x: number
+  y: number
+}
+
+export type MapBoard = {
+  id: string
+  locationId: string
+  name: string
+  cols: number
+  rows: number
+  squareFeet: number
+  imageName: string
+  /** Cached image for localStorage / in-session play */
+  imageDataUrl: string
+  walkable: WalkCell[]
+}
+
+export type TokenKind = 'player' | 'npc'
+
+export type MapToken = {
+  id: string
+  kind: TokenKind
+  characterId: string
+  mapId: string
+  gx: number
+  gy: number
+}
+
+export type TableAction = 'move' | 'attack'
+
+export type PendingAction = {
+  id: string
+  actorKind: TokenKind
+  actorId: string
+  action: TableAction
+  targetGx: number | null
+  targetGy: number | null
+  targetId: string | null
+  d20: number | null
+  advantage: boolean
+  disadvantage: boolean
+  preview: string
+}
+
+export type WorkspaceMode = 'desktop' | 'map'
+
+export type PublicTableState = {
+  maps: MapBoard[]
+  tokens: MapToken[]
+  players: Player[]
+  npcs: Npc[]
+  pendingAction: PendingAction | null
+  activeMapId: string | null
+}
+
+export type AppRole = 'dm' | 'player'
 
 export type AppData = {
   locations: Location[]
   scenes: Scene[]
   players: Player[]
   npcs: Npc[]
-  /** Currently toggled location (only one). */
+  maps: MapBoard[]
+  tokens: MapToken[]
+  pendingAction: PendingAction | null
   activeLocationId: string | null
-  /**
-   * Active scene within the toggled location.
-   * `null` means the location's Default scene (defaults for weather/audio/atmosphere).
-   */
   activeSceneId: string | null
+  activeMapId: string | null
+  workspaceMode: WorkspaceMode
   theme: ThemeConfig
   modules: DashboardModule[]
 }
@@ -136,11 +206,11 @@ export const DEFAULT_THEME: ThemeConfig = {
 }
 
 export const DEFAULT_MODULES: DashboardModule[] = [
-  { id: 'place', visible: true },
-  { id: 'soundscape', visible: true },
-  { id: 'party', visible: true },
-  { id: 'cast', visible: true },
-  { id: 'encounters', visible: true },
+  { id: 'place', visible: true, x: 1, y: 1, w: 48, h: 54 },
+  { id: 'soundscape', visible: true, x: 51, y: 1, w: 47, h: 24 },
+  { id: 'party', visible: true, x: 51, y: 27, w: 47, h: 28 },
+  { id: 'cast', visible: true, x: 1, y: 57, w: 48, h: 40 },
+  { id: 'encounters', visible: true, x: 51, y: 57, w: 47, h: 40 },
 ]
 
 export const emptyAudioClip = (): AudioClip => ({
@@ -161,4 +231,9 @@ export const emptyStats = (): CharacterStats => ({
   armor: 0,
   attack: 0,
   initiative: 0,
+  ac: 10,
+  speedFt: 30,
+  attackBonus: 2,
+  damageDice: '1d6+2',
+  rangeFt: 5,
 })

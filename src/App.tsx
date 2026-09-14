@@ -4,6 +4,7 @@ import { useAudioEngine } from './hooks/useAudioEngine'
 import { AudioProvider } from './hooks/useAudioContext'
 import { AudioDock } from './components/AudioDock'
 import { LocationRail } from './components/LocationRail'
+import { TableShare } from './components/TableShare'
 import { DashboardView } from './views/DashboardView'
 import { WorldView } from './views/WorldView'
 import { ScenesView } from './views/ScenesView'
@@ -11,6 +12,8 @@ import { PlayersView } from './views/PlayersView'
 import { NpcsView } from './views/NpcsView'
 import { AudioView } from './views/AudioView'
 import { CustomizeView } from './views/CustomizeView'
+import { MapView } from './views/MapView'
+import { RoleProvider } from './hooks/useRole'
 import type { NavView } from './types'
 
 const NAV: { id: NavView; label: string }[] = [
@@ -27,7 +30,7 @@ function Shell() {
   const [view, setView] = useState<NavView>('dashboard')
   const [railOpen, setRailOpen] = useState(false)
   const engine = useAudioEngine()
-  const { data } = useStore()
+  const { data, setWorkspaceMode } = useStore()
 
   useEffect(() => {
     const root = document.documentElement
@@ -44,10 +47,24 @@ function Shell() {
             <span className="brand__mark" aria-hidden />
             <div>
               <p className="brand__name">DM Assistant</p>
-              <p className="brand__tag">Modular dashboard · mobile-ready</p>
+              <p className="brand__tag">Private desktop · shared player table</p>
             </div>
           </div>
           <div className="topbar__actions">
+            <button
+              type="button"
+              className={`btn btn--sm${data.workspaceMode === 'desktop' ? ' btn--accent' : ''}`}
+              onClick={() => setWorkspaceMode('desktop')}
+            >
+              Desktop
+            </button>
+            <button
+              type="button"
+              className={`btn btn--sm${data.workspaceMode === 'map' ? ' btn--accent' : ''}`}
+              onClick={() => setWorkspaceMode('map')}
+            >
+              Map
+            </button>
             <button
               type="button"
               className="btn btn--accent locations-open locations-open--bar"
@@ -61,7 +78,10 @@ function Shell() {
                   key={item.id}
                   type="button"
                   className={view === item.id ? 'is-active' : undefined}
-                  onClick={() => setView(item.id)}
+                  onClick={() => {
+                    setView(item.id)
+                    setWorkspaceMode('desktop')
+                  }}
                 >
                   {item.label}
                 </button>
@@ -73,15 +93,26 @@ function Shell() {
         <div className="workspace">
           <LocationRail open={railOpen} onClose={() => setRailOpen(false)} />
           <main className="main">
-            {view === 'dashboard' && (
-              <DashboardView onOpenLocations={() => setRailOpen(true)} />
+            {data.workspaceMode === 'map' ? (
+              <>
+                <MapView />
+                <div className="table-share-wrap">
+                  <TableShare />
+                </div>
+              </>
+            ) : (
+              <>
+                {view === 'dashboard' && (
+                  <DashboardView onOpenLocations={() => setRailOpen(true)} />
+                )}
+                {view === 'world' && <WorldView />}
+                {view === 'scenes' && <ScenesView />}
+                {view === 'players' && <PlayersView />}
+                {view === 'npcs' && <NpcsView />}
+                {view === 'audio' && <AudioView />}
+                {view === 'customize' && <CustomizeView />}
+              </>
             )}
-            {view === 'world' && <WorldView />}
-            {view === 'scenes' && <ScenesView />}
-            {view === 'players' && <PlayersView />}
-            {view === 'npcs' && <NpcsView />}
-            {view === 'audio' && <AudioView />}
-            {view === 'customize' && <CustomizeView />}
           </main>
         </div>
 
@@ -93,8 +124,10 @@ function Shell() {
 
 export default function App() {
   return (
-    <StoreProvider>
-      <Shell />
-    </StoreProvider>
+    <RoleProvider role="dm">
+      <StoreProvider>
+        <Shell />
+      </StoreProvider>
+    </RoleProvider>
   )
 }

@@ -119,19 +119,46 @@ export function StatEditor({ stats, onChange, compact }: Props) {
 
       <div className="field-row field-row--stats">
         <label className="field">
-          <span>Armor</span>
+          <span>AC</span>
           <input
             type="number"
-            value={stats.armor}
-            onChange={(e) => onChange({ armor: Number(e.target.value) })}
+            value={stats.ac}
+            onChange={(e) => onChange({ ac: Number(e.target.value) })}
           />
         </label>
         <label className="field">
-          <span>Attack</span>
+          <span>Speed (ft)</span>
           <input
             type="number"
-            value={stats.attack}
-            onChange={(e) => onChange({ attack: Number(e.target.value) })}
+            value={stats.speedFt}
+            onChange={(e) => onChange({ speedFt: Number(e.target.value) })}
+          />
+        </label>
+        <label className="field">
+          <span>Attack bonus</span>
+          <input
+            type="number"
+            value={stats.attackBonus}
+            onChange={(e) => onChange({ attackBonus: Number(e.target.value) })}
+          />
+        </label>
+        <label className="field">
+          <span>Damage</span>
+          <input
+            type="text"
+            value={stats.damageDice}
+            onChange={(e) => onChange({ damageDice: e.target.value })}
+            placeholder="1d8+3"
+          />
+        </label>
+      </div>
+      <div className="field-row field-row--stats">
+        <label className="field">
+          <span>Range (ft)</span>
+          <input
+            type="number"
+            value={stats.rangeFt}
+            onChange={(e) => onChange({ rangeFt: Number(e.target.value) })}
           />
         </label>
         <label className="field">
@@ -148,6 +175,14 @@ export function StatEditor({ stats, onChange, compact }: Props) {
             type="number"
             value={stats.skillPoints}
             onChange={(e) => onChange({ skillPoints: Number(e.target.value) })}
+          />
+        </label>
+        <label className="field">
+          <span>Armor (legacy)</span>
+          <input
+            type="number"
+            value={stats.armor}
+            onChange={(e) => onChange({ armor: Number(e.target.value) })}
           />
         </label>
       </div>

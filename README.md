@@ -1,21 +1,28 @@
 # DM Assistant
 
-An all-in-one dungeon master assistant for world building, scene encounters, on-the-fly character tracking, and YouTube-based soundscapes — no backend required.
+Client-only dungeon master app (Vite + React) for GitHub Pages. No server to host.
+
+## Play on two devices (low friction)
+
+Players should **not** sit on the DM desktop — that screen has notes and upcoming scenes.
+
+1. DM opens the main app, goes to **Map**, clicks **Open player table**.
+2. A 4-letter code and QR/link appear. Keep that tab open.
+3. Players open `play.html` on their phones (or scan the QR) and enter the code.
+4. They only see the map, pick a character, Move/Attack, and **Propose**. The DM **Accept / Decline** on the DM device.
+
+Live play uses a peer connection (internet required). No shared folders, no Google login.
+
+CSV downloads in **Customize** are optional backups, not the live protocol.
 
 ## Features
 
-- **Modular dashboard** — show/hide and drag-reorder live modules
-- **Location rail** — dedicated vertical list; toggle one location at a time
-- **Scene picker** — Default (location weather/audio) or user-defined scenes per location
-- **World building** — Locations with size, biome, atmosphere, default weather, and default music/ambience
-- **Scene building** — Multiple scenes per location, encounters, linked enemies/NPCs, scene weather and audio overrides
-- **Player tracker** — Roles, personality, traits, buffs/debuffs, skills, skill points, HP, and combat stats (editable live)
-- **Enemy / NPC tracker** — Same live stat editing for foes and supporting cast
-- **YouTube audio engine** — Dual music + ambience channels with URL, in-point, and out-point trimming (loops inside the window)
-- **Theme (phase 1)** — Base, accent, and text color customization
-- **Mobile-ready** — Responsive layout; location rail becomes a drawer on small screens
-
-Data persists in `localStorage`. Export/import JSON from the Audio tab.
+- 2D desktop modules (drag/resize); phones stack in 1D
+- Location rail, scenes, YouTube audio with in/out points
+- Grid maps: import an image, paint walkable cells, place tokens
+- 5e-lite: speed, AC, attack bonus, damage dice, d20 (adv/dis)
+- Character CSV import/export on Players
+- Theme colors
 
 ## Develop
 
@@ -24,6 +31,9 @@ npm install
 npm run dev
 ```
 
+- DM: `http://localhost:5173/`
+- Players: `http://localhost:5173/play.html`
+
 ## Build
 
 ```bash
@@ -31,4 +41,4 @@ npm run build
 npm run preview
 ```
 
-Open the app, toggle a **location** from the left rail, pick **Default** or a custom scene, and rearrange dashboard modules under **Customize**. Theme colors (base / accent / text) apply live.
+GitHub Pages is served from `/DM-Assistant/` in production builds.

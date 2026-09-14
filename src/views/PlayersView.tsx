@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { exportCharacterCsv } from '../data/campaignCsv'
+import { downloadText } from '../lib/csv'
 import { useStore } from '../hooks/useStore'
 import { StatEditor } from '../components/StatEditor'
 
 export function PlayersView() {
-  const { data, addPlayer, updatePlayer, updatePlayerStats, deletePlayer } = useStore()
+  const { data, addPlayer, updatePlayer, updatePlayerStats, deletePlayer, importPlayerCsv } =
+    useStore()
   const [selectedId, setSelectedId] = useState<string | null>(data.players[0]?.id ?? null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const player = useMemo(
     () => data.players.find((p) => p.id === selectedId) ?? null,
@@ -23,6 +27,28 @@ export function PlayersView() {
           >
             Add player
           </button>
+        </div>
+        <div className="btn-row">
+          <button type="button" className="btn btn--sm" onClick={() => fileRef.current?.click()}>
+            Import CSV
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              try {
+                const id = importPlayerCsv(await file.text())
+                setSelectedId(id)
+              } catch {
+                alert('Could not read that character CSV.')
+              }
+              e.target.value = ''
+            }}
+          />
         </div>
         <ul className="entity-list">
           {data.players.map((p) => (
@@ -52,18 +78,32 @@ export function PlayersView() {
                 <p className="eyebrow">Player tracker</p>
                 <h2>{player.name}</h2>
               </div>
-              <button
-                type="button"
-                className="btn btn--danger"
-                onClick={() => {
-                  if (confirm(`Remove ${player.name}?`)) {
-                    deletePlayer(player.id)
-                    setSelectedId(data.players.find((p) => p.id !== player.id)?.id ?? null)
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    downloadText(
+                      `${player.name.replace(/\s+/g, '-')}.csv`,
+                      exportCharacterCsv(player),
+                    )
                   }
-                }}
-              >
-                Delete
-              </button>
+                >
+                  Export CSV
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  onClick={() => {
+                    if (confirm(`Remove ${player.name}?`)) {
+                      deletePlayer(player.id)
+                      setSelectedId(data.players.find((p) => p.id !== player.id)?.id ?? null)
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
             </header>
 
             <div className="form-grid">
@@ -79,6 +119,14 @@ export function PlayersView() {
                 <input
                   value={player.role}
                   onChange={(e) => updatePlayer(player.id, { role: e.target.value })}
+                />
+              </label>
+              <label className="field field--full">
+                <span>Backstory</span>
+                <textarea
+                  rows={3}
+                  value={player.backstory}
+                  onChange={(e) => updatePlayer(player.id, { backstory: e.target.value })}
                 />
               </label>
               <label className="field field--full">

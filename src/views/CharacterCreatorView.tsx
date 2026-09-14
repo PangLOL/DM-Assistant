@@ -23,7 +23,19 @@ const CLASS_OPTIONS = [
 
 const SPEED_OPTIONS = [20, 25, 30, 35, 40]
 const AC_OPTIONS = [10, 11, 12, 13, 14, 15, 16, 17, 18]
-const DAMAGE_PRESETS = ['1d4', '1d6', '1d8', '1d10', '1d12', '2d6', '1d4+2', '1d6+2', '1d8+3', '1d10+4']
+const DAMAGE_PRESETS = [
+  '1d4',
+  '1d6',
+  '1d8',
+  '1d10',
+  '1d12',
+  '2d6',
+  '1d4+2',
+  '1d6+2',
+  '1d8+2',
+  '1d8+3',
+  '1d10+4',
+]
 const RANGE_OPTIONS = [5, 30, 60, 80, 120, 150]
 const MAX_HP_OPTIONS = [8, 10, 12, 14, 16, 18, 20, 24, 28]
 

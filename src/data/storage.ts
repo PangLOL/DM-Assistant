@@ -7,6 +7,7 @@ import type {
   Location,
   MapBoard,
   MapToken,
+  WalkCell,
   ModuleId,
   Npc,
   Player,
@@ -89,19 +90,113 @@ export function createNpc(partial?: Partial<Npc>): Npc {
   }
 }
 
-export function createMap(locationId: string, partial?: Partial<MapBoard>): MapBoard {
-  return {
-    id: uid(),
-    locationId,
-    name: 'New map',
-    cols: 25,
-    rows: 25,
-    squareFeet: 5,
-    imageName: '',
-    imageDataUrl: '',
-    walkable: [],
-    ...partial,
+export const DEFAULT_MAP_SIZE = 8
+
+/** Every square starts open. The DM erases the ones that should block movement. */
+export function fullGrid(cols: number, rows: number): WalkCell[] {
+  const cells: WalkCell[] = []
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) cells.push({ x, y })
   }
+  return cells
+}
+
+/**
+ * Cells the DM already erased stay erased. Squares added by growing the grid start painted.
+ */
+export function resizeWalkable(map: MapBoard, cols: number, rows: number): WalkCell[] {
+  const kept = map.walkable.filter(
+    (c) => c.x >= 0 && c.y >= 0 && c.x < cols && c.y < rows && c.x < map.cols && c.y < map.rows,
+  )
+  const have = new Set(kept.map((c) => `${c.x},${c.y}`))
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (x < map.cols && y < map.rows) continue
+      const key = `${x},${y}`
+      if (have.has(key)) continue
+      have.add(key)
+      kept.push({ x, y })
+    }
+  }
+  return kept
+}
+
+export function createMap(locationId: string, partial?: Partial<MapBoard>): MapBoard {
+  const cols = partial?.cols ?? DEFAULT_MAP_SIZE
+  const rows = partial?.rows ?? DEFAULT_MAP_SIZE
+  return {
+    id: partial?.id ?? uid(),
+    locationId,
+    name: partial?.name ?? 'New map',
+    cols,
+    rows,
+    squareFeet: partial?.squareFeet ?? 5,
+    imageName: partial?.imageName ?? '',
+    imageDataUrl: partial?.imageDataUrl ?? '',
+    walkable: partial?.walkable ?? fullGrid(cols, rows),
+  }
+}
+
+/** Keep a token in the same part of the map when the grid resolution changes. */
+export function rescaleTokenCell(
+  gx: number,
+  gy: number,
+  oldCols: number,
+  oldRows: number,
+  cols: number,
+  rows: number,
+): { gx: number; gy: number } {
+  const fromCols = Math.max(1, oldCols)
+  const fromRows = Math.max(1, oldRows)
+  const x = Math.min(fromCols - 1, Math.max(0, gx))
+  const y = Math.min(fromRows - 1, Math.max(0, gy))
+  return {
+    gx: Math.min(cols - 1, Math.max(0, Math.floor(((x + 0.5) * cols) / fromCols))),
+    gy: Math.min(rows - 1, Math.max(0, Math.floor(((y + 0.5) * rows) / fromRows))),
+  }
+}
+
+function nearestOpenCell(
+  gx: number,
+  gy: number,
+  cols: number,
+  rows: number,
+  taken: Set<string>,
+): { gx: number; gy: number } {
+  const key = (x: number, y: number) => `${x},${y}`
+  if (!taken.has(key(gx, gy))) return { gx, gy }
+  const limit = Math.max(cols, rows)
+  for (let radius = 1; radius <= limit; radius++) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue
+        const x = gx + dx
+        const y = gy + dy
+        if (x < 0 || y < 0 || x >= cols || y >= rows || taken.has(key(x, y))) continue
+        return { gx: x, gy: y }
+      }
+    }
+  }
+  return { gx, gy }
+}
+
+/** Move tokens with the grid. A second token that would land on the first shifts to the nearest free square. */
+export function rescaleMapTokens(
+  tokens: MapToken[],
+  mapId: string,
+  oldCols: number,
+  oldRows: number,
+  cols: number,
+  rows: number,
+): MapToken[] {
+  const taken = new Set<string>()
+  return tokens.map((token) => {
+    if (token.mapId !== mapId) return token
+    const preferred = rescaleTokenCell(token.gx, token.gy, oldCols, oldRows, cols, rows)
+    const spot = nearestOpenCell(preferred.gx, preferred.gy, cols, rows, taken)
+    taken.add(`${spot.gx},${spot.gy}`)
+    return { ...token, ...spot }
+  })
 }
 
 export function createToken(partial: Omit<MapToken, 'id'> & { id?: string }): MapToken {
@@ -366,16 +461,11 @@ const seedData = (): AppData => {
 
   const groveMap = createMap(forest.id, {
     name: 'Grove path',
-    cols: 12,
-    rows: 12,
     imageName: 'grove-path.png',
-    walkable: (() => {
-      const cells = []
-      for (let y = 2; y <= 9; y++) {
-        for (let x = 2; x <= 9; x++) cells.push({ x, y })
-      }
-      return cells
-    })(),
+  })
+
+  const lanternMap = createMap(tavern.id, {
+    name: 'Lantern floor',
   })
 
   return normalizeData({
@@ -383,10 +473,10 @@ const seedData = (): AppData => {
     scenes: [groveGate, commonRoom],
     players: [player],
     npcs: [scout, keeper],
-    maps: [groveMap],
+    maps: [groveMap, lanternMap],
     tokens: [
-      createToken({ kind: 'player', characterId: player.id, mapId: groveMap.id, gx: 3, gy: 8 }),
-      createToken({ kind: 'npc', characterId: scout.id, mapId: groveMap.id, gx: 8, gy: 3 }),
+      createToken({ kind: 'player', characterId: player.id, mapId: groveMap.id, gx: 2, gy: 6 }),
+      createToken({ kind: 'npc', characterId: scout.id, mapId: groveMap.id, gx: 5, gy: 1 }),
     ],
     pendingAction: null,
     activeLocationId: forest.id,

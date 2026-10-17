@@ -39,7 +39,7 @@ export function TableShare() {
             conn.send({ type: 'state', payload: publicTableState() })
           }
           if (msg.type === 'propose') {
-            const err = proposeAction({
+            const result = proposeAction({
               actorKind: msg.actorKind,
               actorId: msg.actorId,
               action: msg.action,
@@ -49,8 +49,9 @@ export function TableShare() {
               d20: msg.d20,
               advantage: msg.advantage,
               disadvantage: msg.disadvantage,
+              damage: msg.damage,
             })
-            if (err) conn.send({ type: 'state', payload: { ...publicTableState(), error: err } })
+            if (result.error) conn.send({ type: 'state', payload: { ...publicTableState(), error: result.error } })
             else pushState()
           }
         }) as never)

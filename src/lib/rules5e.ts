@@ -42,6 +42,165 @@ export function pathIsWalkable(walkable: WalkCell[], x0: number, y0: number, x1:
   return chebyshevLine(x0, y0, x1, y1).every((c) => isWalkable(walkable, c.x, c.y))
 }
 
+export function cellKey(x: number, y: number): string {
+  return `${x},${y}`
+}
+
+export function speedSquares(speedFt: number, squareFeet: number): number {
+  const size = squareFeet > 0 ? squareFeet : 5
+  return Math.max(0, Math.floor(speedFt / size))
+}
+
+const EIGHT_NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
+  [-1, -1],
+  [-1, 0],
+  [-1, 1],
+  [0, -1],
+  [0, 1],
+  [1, -1],
+  [1, 0],
+  [1, 1],
+]
+
+function walkableKeys(cells: WalkCell[]): Set<string> {
+  return new Set(cells.map((c) => cellKey(c.x, c.y)))
+}
+
+/**
+ * Painted squares reachable in at most `maxSquares` steps.
+ * Each step is one square, including diagonals. Other tokens block the way.
+ * The origin is not included.
+ */
+export function reachableSquares(
+  walkable: WalkCell[],
+  x0: number,
+  y0: number,
+  maxSquares: number,
+  blocked: ReadonlySet<string> = new Set(),
+): Map<string, number> {
+  const dist = new Map<string, number>()
+  if (maxSquares <= 0) return dist
+  const open = walkableKeys(walkable)
+  const start = cellKey(x0, y0)
+  const queue: Array<{ x: number; y: number; d: number }> = [{ x: x0, y: y0, d: 0 }]
+  const seen = new Set<string>([start])
+  for (let i = 0; i < queue.length; i++) {
+    const { x, y, d } = queue[i]
+    if (d >= maxSquares) continue
+    for (const [dx, dy] of EIGHT_NEIGHBORS) {
+      const nx = x + dx
+      const ny = y + dy
+      const key = cellKey(nx, ny)
+      if (seen.has(key) || !open.has(key) || blocked.has(key)) continue
+      seen.add(key)
+      const next = d + 1
+      dist.set(key, next)
+      queue.push({ x: nx, y: ny, d: next })
+    }
+  }
+  return dist
+}
+
+/**
+ * Painted route from the origin square to the destination, inclusive.
+ * Null when no route exists. The destination is the last cell.
+ */
+export function routePath(
+  walkable: WalkCell[],
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  blocked: ReadonlySet<string> = new Set(),
+): WalkCell[] | null {
+  if (x0 === x1 && y0 === y1) return [{ x: x0, y: y0 }]
+  const open = walkableKeys(walkable)
+  const goal = cellKey(x1, y1)
+  if (!open.has(goal) || blocked.has(goal)) return null
+  const start = cellKey(x0, y0)
+  const queue: Array<{ x: number; y: number }> = [{ x: x0, y: y0 }]
+  const prev = new Map<string, string>()
+  const seen = new Set<string>([start])
+  for (let i = 0; i < queue.length; i++) {
+    const { x, y } = queue[i]
+    const here = cellKey(x, y)
+    for (const [dx, dy] of EIGHT_NEIGHBORS) {
+      const nx = x + dx
+      const ny = y + dy
+      const key = cellKey(nx, ny)
+      if (seen.has(key) || !open.has(key) || blocked.has(key)) continue
+      seen.add(key)
+      prev.set(key, here)
+      if (key === goal) {
+        const path: WalkCell[] = []
+        let cursor: string | undefined = key
+        while (cursor) {
+          const [px, py] = cursor.split(',').map(Number)
+          path.push({ x: px, y: py })
+          if (cursor === start) break
+          cursor = prev.get(cursor)
+        }
+        path.reverse()
+        return path
+      }
+      queue.push({ x: nx, y: ny })
+    }
+  }
+  return null
+}
+
+/** Step count of a painted route, or null when no route exists. */
+export function routeCost(
+  walkable: WalkCell[],
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  blocked: ReadonlySet<string> = new Set(),
+): number | null {
+  const path = routePath(walkable, x0, y0, x1, y1, blocked)
+  if (!path) return null
+  return Math.max(0, path.length - 1)
+}
+
+/** Separate painted areas. A platform the party cannot walk to is its own region. */
+export function walkableRegionCount(cells: WalkCell[]): number {
+  const open = walkableKeys(cells)
+  const seen = new Set<string>()
+  let regions = 0
+  for (const cell of cells) {
+    const start = cellKey(cell.x, cell.y)
+    if (seen.has(start) || !open.has(start)) continue
+    regions += 1
+    const queue = [cell]
+    seen.add(start)
+    for (let i = 0; i < queue.length; i++) {
+      const { x, y } = queue[i]
+      for (const [dx, dy] of EIGHT_NEIGHBORS) {
+        const nx = x + dx
+        const ny = y + dy
+        const key = cellKey(nx, ny)
+        if (!open.has(key) || seen.has(key)) continue
+        seen.add(key)
+        queue.push({ x: nx, y: ny })
+      }
+    }
+  }
+  return regions
+}
+
+export function rectCells(x0: number, y0: number, x1: number, y1: number): WalkCell[] {
+  const cells: WalkCell[] = []
+  const xMin = Math.min(x0, x1)
+  const xMax = Math.max(x0, x1)
+  const yMin = Math.min(y0, y1)
+  const yMax = Math.max(y0, y1)
+  for (let y = yMin; y <= yMax; y++) {
+    for (let x = xMin; x <= xMax; x++) cells.push({ x, y })
+  }
+  return cells
+}
+
 export function parseDice(expr: string): { count: number; sides: number; bonus: number } {
   const cleaned = expr.replace(/\s+/g, '').toLowerCase()
   const match = cleaned.match(/^(\d*)d(\d+)([+-]\d+)?$/)

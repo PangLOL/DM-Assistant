@@ -19,6 +19,8 @@ import {
   createEncounter,
   createLocation,
   createMap,
+  rescaleMapTokens,
+  resizeWalkable,
   createNpc,
   createPlayer,
   createScene,
@@ -36,8 +38,8 @@ import {
   chebyshev,
   effectiveAc,
   isWalkable,
-  pathIsWalkable,
   rollDiceExpr,
+  routeCost,
   squaresToFeet,
 } from '../lib/rules5e'
 import type {
@@ -111,7 +113,8 @@ type StoreContextValue = {
     d20?: number | null
     advantage?: boolean
     disadvantage?: boolean
-  }) => string | null
+    damage?: number | null
+  }) => { error: string | null; feet: number | null; damage: number | null }
   clearPending: () => void
   resolvePending: (mode: ResolveMode, extra?: { modifier?: number; manualHp?: number; note?: string }) => string
   applyCsvSlice: (slice: CampaignSlice, csv: string, extras?: { walkByMapId?: Record<string, WalkCell[]>; imageByName?: Record<string, string> }) => void
@@ -179,10 +182,13 @@ export function StoreProvider({
 
   const addLocation = useCallback(() => {
     const loc = createLocation()
+    const map = createMap(loc.id, { name: loc.name })
     setData((d) => ({
       ...d,
       locations: [...d.locations, loc],
+      maps: [...d.maps, map],
       activeLocationId: loc.id,
+      activeMapId: map.id,
       activeSceneId: null,
     }))
     return loc.id
@@ -425,7 +431,25 @@ export function StoreProvider({
   }, [])
 
   const updateMap = useCallback((id: string, patch: Partial<MapBoard>) => {
-    setData((d) => ({ ...d, maps: updateList(d.maps, id, patch) }))
+    setData((d) => {
+      let tokens = d.tokens
+      const maps = d.maps.map((m) => {
+        if (m.id !== id) return m
+        const next = { ...m, ...patch }
+        if ((patch.cols != null || patch.rows != null) && patch.walkable == null) {
+          const cols = Math.max(2, next.cols)
+          const rows = Math.max(2, next.rows)
+          next.cols = cols
+          next.rows = rows
+          next.walkable = resizeWalkable(m, cols, rows)
+          if (cols !== m.cols || rows !== m.rows) {
+            tokens = rescaleMapTokens(tokens, m.id, m.cols, m.rows, cols, rows)
+          }
+        }
+        return next
+      })
+      return { ...d, maps, tokens }
+    })
   }, [])
 
   const deleteMap = useCallback((id: string) => {
@@ -520,8 +544,11 @@ export function StoreProvider({
       d20?: number | null
       advantage?: boolean
       disadvantage?: boolean
+      damage?: number | null
     }) => {
       let error: string | null = null
+      let feet: number | null = null
+      let damage: number | null = null
       setData((d) => {
         const map = d.maps.find((m) => m.id === d.activeMapId)
         const token = d.tokens.find(
@@ -545,18 +572,27 @@ export function StoreProvider({
             error = 'That square is not on the painted map.'
             return d
           }
+          if (tx === token.gx && ty === token.gy) {
+            error = 'Pick a different square.'
+            return d
+          }
           if (d.tokens.some((t) => t.mapId === map.id && t.gx === tx && t.gy === ty && t.id !== token.id)) {
             error = 'That square is occupied.'
             return d
           }
-          const squares = chebyshev(token.gx, token.gy, tx, ty)
-          const feet = squaresToFeet(squares, map.squareFeet)
-          if (!pathIsWalkable(map.walkable, token.gx, token.gy, tx, ty)) {
-            error = 'Path leaves the painted map.'
+          const blocked = new Set(
+            d.tokens
+              .filter((t) => t.mapId === map.id && t.id !== token.id)
+              .map((t) => `${t.gx},${t.gy}`),
+          )
+          const squares = routeCost(map.walkable, token.gx, token.gy, tx, ty, blocked)
+          if (squares == null) {
+            error = 'No painted route to that square.'
             return d
           }
+          feet = squaresToFeet(squares, map.squareFeet)
           if (feet > stats.speedFt) {
-            error = `Move is ${feet} ft; speed is ${stats.speedFt} ft.`
+            error = `Route is ${feet} ft; speed is ${stats.speedFt} ft.`
             return d
           }
           preview = `${actorName(d, input.actorKind, input.actorId)} moves ${squares} squares (${feet} ft) to ${tx},${ty}.`
@@ -579,9 +615,21 @@ export function StoreProvider({
             chebyshev(token.gx, token.gy, targetToken.gx, targetToken.gy),
             map.squareFeet,
           )
+          if (dist > stats.rangeFt) {
+            error = `Target is ${dist} ft away; reach is ${stats.rangeFt} ft.`
+            return d
+          }
           const ac = effectiveAc(targetStats)
           const result = attackPreview(stats, ac, input.d20, dist)
-          preview = `${actorName(d, input.actorKind, input.actorId)} attacks ${actorName(d, targetToken.kind, targetToken.characterId)}: ${result.summary}. Damage dice ${stats.damageDice}.`
+          if (typeof input.damage === 'number' && Number.isFinite(input.damage)) {
+            damage = input.damage
+          } else if (result.hit) {
+            const rolled = rollDiceExpr(stats.damageDice)
+            damage = result.crit ? rolled.total + rollDiceExpr(stats.damageDice).total : rolled.total
+          } else {
+            damage = 0
+          }
+          preview = `${actorName(d, input.actorKind, input.actorId)} attacks ${actorName(d, targetToken.kind, targetToken.characterId)}: ${result.summary}. Damage ${damage} (${stats.damageDice}).`
         }
 
         return {
@@ -598,10 +646,12 @@ export function StoreProvider({
             advantage: Boolean(input.advantage),
             disadvantage: Boolean(input.disadvantage),
             preview,
+            feet,
+            damage,
           },
         }
       })
-      return error
+      return { error, feet, damage }
     },
     [],
   )
@@ -612,74 +662,11 @@ export function StoreProvider({
 
   const resolvePending = useCallback(
     (mode: ResolveMode, extra?: { modifier?: number; manualHp?: number; note?: string }) => {
-      let message = 'Declined.'
-      setData((d) => {
-        const pending = d.pendingAction
-        if (!pending) {
-          message = 'Nothing pending.'
-          return d
-        }
-        const map = d.maps.find((m) => m.id === d.activeMapId)
-        const token = d.tokens.find(
-          (t) => t.kind === pending.actorKind && t.characterId === pending.actorId,
-        )
-        if (!map || !token) {
-          message = 'Actor token missing.'
-          return { ...d, pendingAction: null }
-        }
-
-        if (pending.action === 'move') {
-          const gx = pending.targetGx
-          const gy = pending.targetGy
-          if (gx == null || gy == null) return { ...d, pendingAction: null }
-          message = extra?.note || pending.preview
-          return {
-            ...d,
-            pendingAction: null,
-            tokens: d.tokens.map((t) => (t.id === token.id ? { ...t, gx, gy } : t)),
-          }
-        }
-
-        const targetToken = d.tokens.find((t) => t.id === pending.targetId)
-        if (!targetToken) return { ...d, pendingAction: null }
-        const attacker = actorStats(d, pending.actorKind, pending.actorId)
-        const defender = actorStats(d, targetToken.kind, targetToken.characterId)
-        if (!attacker || !defender) return { ...d, pendingAction: null }
-
-        const dist = squaresToFeet(
-          chebyshev(token.gx, token.gy, targetToken.gx, targetToken.gy),
-          map.squareFeet,
-        )
-        const result = attackPreview(attacker, effectiveAc(defender), pending.d20 ?? 1, dist)
-        let damage = 0
-        if (mode === 'manual' && extra?.manualHp != null) {
-          const nextHp = extra.manualHp
-          message = extra.note || `Manual HP set to ${nextHp}.`
-          return patchHp(d, targetToken, nextHp, message)
-        }
-        if (!result.hit && mode === 'rules') {
-          message = `${result.summary} No damage.`
-          return { ...d, pendingAction: null }
-        }
-        const rolled = rollDiceExpr(attacker.damageDice)
-        damage = result.crit ? rolled.total + rollDiceExpr(attacker.damageDice).total : rolled.total
-        if (mode === 'modifier') damage += extra?.modifier ?? 0
-        if (!result.hit && mode === 'modifier') {
-          // still allow DM spice on a miss
-          if ((extra?.modifier ?? 0) === 0) {
-            message = `${result.summary} Miss — no modifier applied.`
-            return { ...d, pendingAction: null }
-          }
-        }
-        const nextHp = Math.max(0, defender.hp - Math.max(0, damage))
-        message = `${result.summary} Damage ${damage} (${attacker.damageDice}${
-          mode === 'modifier' && extra?.modifier ? ` + ${extra.modifier}` : ''
-        }). HP ${defender.hp} → ${nextHp}.`
-        return patchHp(d, targetToken, nextHp, message)
-      })
-      return message
+      const settled = settlePending(data, mode, extra)
+      setData(settled.data)
+      return settled.message
     },
-    [],
+    [data],
   )
 
   const applyCsvSlice = useCallback(
@@ -833,6 +820,85 @@ export function StoreProvider({
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+}
+
+function settlePending(
+  d: AppData,
+  mode: ResolveMode,
+  extra?: { modifier?: number; manualHp?: number; note?: string },
+): { data: AppData; message: string } {
+  const pending = d.pendingAction
+  if (!pending) return { data: d, message: 'Nothing pending.' }
+  const map = d.maps.find((m) => m.id === d.activeMapId)
+  const token = d.tokens.find(
+    (t) => t.kind === pending.actorKind && t.characterId === pending.actorId,
+  )
+  if (!map || !token) {
+    return { data: { ...d, pendingAction: null }, message: 'Actor token missing.' }
+  }
+
+  if (pending.action === 'move') {
+    const gx = pending.targetGx
+    const gy = pending.targetGy
+    if (gx == null || gy == null) {
+      return { data: { ...d, pendingAction: null }, message: 'That move has no destination.' }
+    }
+    return {
+      data: {
+        ...d,
+        pendingAction: null,
+        tokens: d.tokens.map((t) => (t.id === token.id ? { ...t, gx, gy } : t)),
+      },
+      message: extra?.note || pending.preview,
+    }
+  }
+
+  const targetToken = d.tokens.find((t) => t.id === pending.targetId)
+  if (!targetToken) {
+    return { data: { ...d, pendingAction: null }, message: 'That target is no longer on the map.' }
+  }
+  const attacker = actorStats(d, pending.actorKind, pending.actorId)
+  const defender = actorStats(d, targetToken.kind, targetToken.characterId)
+  if (!attacker || !defender) {
+    return { data: { ...d, pendingAction: null }, message: 'That creature has no stats.' }
+  }
+
+  const dist = squaresToFeet(
+    chebyshev(token.gx, token.gy, targetToken.gx, targetToken.gy),
+    map.squareFeet,
+  )
+  const result = attackPreview(attacker, effectiveAc(defender), pending.d20 ?? 1, dist)
+  if (mode === 'manual' && extra?.manualHp != null) {
+    const nextHp = extra.manualHp
+    const message = extra.note || `Manual HP set to ${nextHp}.`
+    return { data: patchHp(d, targetToken, nextHp, message), message }
+  }
+  if (!result.hit && mode === 'rules') {
+    return {
+      data: { ...d, pendingAction: null },
+      message: `${result.summary} No damage.`,
+    }
+  }
+  const stored = pending.damage
+  const rolled = rollDiceExpr(attacker.damageDice)
+  let damage =
+    typeof stored === 'number' && Number.isFinite(stored)
+      ? stored
+      : result.crit
+        ? rolled.total + rollDiceExpr(attacker.damageDice).total
+        : rolled.total
+  const mod = mode === 'modifier' ? (extra?.modifier ?? 0) : 0
+  damage += mod
+  if (!result.hit && mode === 'modifier' && mod === 0) {
+    return {
+      data: { ...d, pendingAction: null },
+      message: `${result.summary} Miss — no modifier applied.`,
+    }
+  }
+  const nextHp = Math.max(0, defender.hp - Math.max(0, damage))
+  const modTxt = mod === 0 ? '' : mod > 0 ? ` + ${mod}` : ` − ${Math.abs(mod)}`
+  const message = `${result.summary} Damage ${damage} (${attacker.damageDice}${modTxt}). HP ${defender.hp} → ${nextHp}.`
+  return { data: patchHp(d, targetToken, nextHp, message), message }
 }
 
 function patchHp(

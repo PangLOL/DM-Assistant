@@ -397,6 +397,17 @@ export function MapView() {
     : 0
   const pendingStep = pending?.action === 'move' ? map?.squareFeet || 5 : 1
   const shownValue = Math.max(0, pendingBase + (modifyOn ? adjust : 0))
+  const pinCaption = (() => {
+    if (!pending) return ''
+    if (!modifyOn || shownValue === pendingBase) return pending.preview
+    if (pending.action === 'move') {
+      const squares = Math.round(shownValue / (map?.squareFeet || 5))
+      return pending.preview
+        .replace(/\d+ squares/, `${squares} squares`)
+        .replace(/\(\d+ ft\)/, `(${shownValue} ft)`)
+    }
+    return pending.preview.replace(/Damage \d+/, `Damage ${shownValue}`)
+  })()
 
   const nudge = (dir: -1 | 1) => {
     if (!modifyOn || !pending) return
@@ -860,7 +871,7 @@ export function MapView() {
                 ) : null}
               </div>
               <p className="map-pin__unit">{pending.action === 'move' ? 'movement' : 'damage'}</p>
-              <p className="map-pin__caption">{pending.preview}</p>
+              <p className="map-pin__caption">{pinCaption}</p>
               {role === 'dm' ? (
                 <>
                   <button

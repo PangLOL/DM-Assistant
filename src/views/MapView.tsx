@@ -1,7 +1,16 @@
 import { useMemo, useRef, useState, type PointerEvent } from 'react'
 import { CharacterSheet } from '../components/CharacterSheet'
 import { blobToDataUrl } from '../lib/csv'
-import { cellKey, chebyshev, reachableSquares, rectCells, rollD20, speedSquares, squaresToFeet } from '../lib/rules5e'
+import {
+  cellKey,
+  chebyshev,
+  reachableSquares,
+  rectCells,
+  rollD20,
+  speedSquares,
+  squaresToFeet,
+  walkableRegionCount,
+} from '../lib/rules5e'
 import { useRole } from '../hooks/useRole'
 import { useStore } from '../hooks/useStore'
 import { useTableBus } from '../hooks/useTableBus'
@@ -31,6 +40,10 @@ export function MapView() {
 
   const [paint, setPaint] = useState(false)
   const [erase, setErase] = useState(true)
+  const [colsDraft, setColsDraft] = useState<string | null>(null)
+  const [gapDismissed, setGapDismissed] = useState(false)
+  const [sawSplitGround, setSawSplitGround] = useState(false)
+  const [rowsDraft, setRowsDraft] = useState<string | null>(null)
   const [brush, setBrush] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const brushRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const dragOrigin = useRef<{ x: number; y: number } | null>(null)
@@ -148,6 +161,19 @@ export function MapView() {
     setMessage(err ?? 'Move proposed. Waiting for the DM.')
   }
 
+  const commitSize = (which: 'cols' | 'rows') => {
+    if (!map) return
+    const raw = which === 'cols' ? colsDraft : rowsDraft
+    if (which === 'cols') setColsDraft(null)
+    else setRowsDraft(null)
+    if (raw == null) return
+    const parsed = Math.round(Number(raw))
+    if (!Number.isFinite(parsed)) return
+    const next = Math.max(2, Math.min(80, parsed))
+    const current = which === 'cols' ? map.cols : map.rows
+    if (next !== current) updateMap(map.id, { [which]: next })
+  }
+
   const onImage = async (file: File | undefined) => {
     if (!file || !map) return
     const url = await blobToDataUrl(file)
@@ -238,6 +264,14 @@ export function MapView() {
     ? new Set(rectCells(brush.x0, brush.y0, brush.x1, brush.y1).map((c) => cellKey(c.x, c.y)))
     : new Set<string>()
 
+  const regionCount = map ? walkableRegionCount(map.walkable) : 0
+  const splitGround = regionCount > 1
+  if (splitGround !== sawSplitGround) {
+    setSawSplitGround(splitGround)
+    if (!splitGround) setGapDismissed(false)
+  }
+  const showGapWarning = role === 'dm' && splitGround && !gapDismissed
+
   const moveHint =
     action === 'move' && actor && actorStats && !paint
       ? actorToken
@@ -305,8 +339,12 @@ export function MapView() {
                   type="number"
                   min={2}
                   max={80}
-                  value={map.cols}
-                  onChange={(e) => updateMap(map.id, { cols: Math.max(2, Number(e.target.value) || 2) })}
+                  value={colsDraft ?? map.cols}
+                  onChange={(e) => setColsDraft(e.target.value)}
+                  onBlur={() => commitSize('cols')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                  }}
                 />
               </label>
               <label className="field field--tight">
@@ -315,8 +353,12 @@ export function MapView() {
                   type="number"
                   min={2}
                   max={80}
-                  value={map.rows}
-                  onChange={(e) => updateMap(map.id, { rows: Math.max(2, Number(e.target.value) || 2) })}
+                  value={rowsDraft ?? map.rows}
+                  onChange={(e) => setRowsDraft(e.target.value)}
+                  onBlur={() => commitSize('rows')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                  }}
                 />
               </label>
               <label className="btn btn--sm">
@@ -450,6 +492,18 @@ export function MapView() {
       {selectedPlayer ? (
         <div className="player-sheet-wrap player-sheet-wrap--map">
           <CharacterSheet player={selectedPlayer} compact />
+        </div>
+      ) : null}
+
+      {showGapWarning && map ? (
+        <div className="map-warning" role="alert">
+          <p>
+            Some painted squares are separated. Creatures cannot walk between them. Ranged attacks can
+            still reach across the gap, so a platform or ledge can stay.
+          </p>
+          <button type="button" className="btn btn--sm" onClick={() => setGapDismissed(true)}>
+            Keep this map
+          </button>
         </div>
       ) : null}
 

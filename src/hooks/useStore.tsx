@@ -19,6 +19,7 @@ import {
   createEncounter,
   createLocation,
   createMap,
+  rescaleMapTokens,
   resizeWalkable,
   createNpc,
   createPlayer,
@@ -429,9 +430,9 @@ export function StoreProvider({
   }, [])
 
   const updateMap = useCallback((id: string, patch: Partial<MapBoard>) => {
-    setData((d) => ({
-      ...d,
-      maps: d.maps.map((m) => {
+    setData((d) => {
+      let tokens = d.tokens
+      const maps = d.maps.map((m) => {
         if (m.id !== id) return m
         const next = { ...m, ...patch }
         if ((patch.cols != null || patch.rows != null) && patch.walkable == null) {
@@ -440,10 +441,14 @@ export function StoreProvider({
           next.cols = cols
           next.rows = rows
           next.walkable = resizeWalkable(m, cols, rows)
+          if (cols !== m.cols || rows !== m.rows) {
+            tokens = rescaleMapTokens(tokens, m.id, m.cols, m.rows, cols, rows)
+          }
         }
         return next
-      }),
-    }))
+      })
+      return { ...d, maps, tokens }
+    })
   }, [])
 
   const deleteMap = useCallback((id: string) => {

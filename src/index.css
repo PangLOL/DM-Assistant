@@ -1581,6 +1581,27 @@ code {
   text-align: center;
 }
 
+.map-warning {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100%, 920px);
+  margin: 0 auto 0.85rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 12%, var(--theme-base));
+  box-shadow: var(--shadow);
+}
+
+.map-warning p {
+  margin: 0;
+  color: var(--danger);
+  line-height: 1.45;
+}
+
 @media (max-width: 960px) {
   .workspace {
     grid-template-columns: 1fr;

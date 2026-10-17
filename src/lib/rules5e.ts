@@ -133,6 +133,32 @@ export function routeCost(
   return null
 }
 
+/** Separate painted areas. A platform the party cannot walk to is its own region. */
+export function walkableRegionCount(cells: WalkCell[]): number {
+  const open = walkableKeys(cells)
+  const seen = new Set<string>()
+  let regions = 0
+  for (const cell of cells) {
+    const start = cellKey(cell.x, cell.y)
+    if (seen.has(start) || !open.has(start)) continue
+    regions += 1
+    const queue = [cell]
+    seen.add(start)
+    for (let i = 0; i < queue.length; i++) {
+      const { x, y } = queue[i]
+      for (const [dx, dy] of EIGHT_NEIGHBORS) {
+        const nx = x + dx
+        const ny = y + dy
+        const key = cellKey(nx, ny)
+        if (!open.has(key) || seen.has(key)) continue
+        seen.add(key)
+        queue.push({ x: nx, y: ny })
+      }
+    }
+  }
+  return regions
+}
+
 export function rectCells(x0: number, y0: number, x1: number, y1: number): WalkCell[] {
   const cells: WalkCell[] = []
   const xMin = Math.min(x0, x1)

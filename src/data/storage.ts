@@ -137,6 +137,68 @@ export function createMap(locationId: string, partial?: Partial<MapBoard>): MapB
   }
 }
 
+/** Keep a token in the same part of the map when the grid resolution changes. */
+export function rescaleTokenCell(
+  gx: number,
+  gy: number,
+  oldCols: number,
+  oldRows: number,
+  cols: number,
+  rows: number,
+): { gx: number; gy: number } {
+  const fromCols = Math.max(1, oldCols)
+  const fromRows = Math.max(1, oldRows)
+  const x = Math.min(fromCols - 1, Math.max(0, gx))
+  const y = Math.min(fromRows - 1, Math.max(0, gy))
+  return {
+    gx: Math.min(cols - 1, Math.max(0, Math.floor(((x + 0.5) * cols) / fromCols))),
+    gy: Math.min(rows - 1, Math.max(0, Math.floor(((y + 0.5) * rows) / fromRows))),
+  }
+}
+
+function nearestOpenCell(
+  gx: number,
+  gy: number,
+  cols: number,
+  rows: number,
+  taken: Set<string>,
+): { gx: number; gy: number } {
+  const key = (x: number, y: number) => `${x},${y}`
+  if (!taken.has(key(gx, gy))) return { gx, gy }
+  const limit = Math.max(cols, rows)
+  for (let radius = 1; radius <= limit; radius++) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue
+        const x = gx + dx
+        const y = gy + dy
+        if (x < 0 || y < 0 || x >= cols || y >= rows || taken.has(key(x, y))) continue
+        return { gx: x, gy: y }
+      }
+    }
+  }
+  return { gx, gy }
+}
+
+/** Move tokens with the grid. A second token that would land on the first shifts to the nearest free square. */
+export function rescaleMapTokens(
+  tokens: MapToken[],
+  mapId: string,
+  oldCols: number,
+  oldRows: number,
+  cols: number,
+  rows: number,
+): MapToken[] {
+  const taken = new Set<string>()
+  return tokens.map((token) => {
+    if (token.mapId !== mapId) return token
+    const preferred = rescaleTokenCell(token.gx, token.gy, oldCols, oldRows, cols, rows)
+    const spot = nearestOpenCell(preferred.gx, preferred.gy, cols, rows, taken)
+    taken.add(`${spot.gx},${spot.gy}`)
+    return { ...token, ...spot }
+  })
+}
+
 export function createToken(partial: Omit<MapToken, 'id'> & { id?: string }): MapToken {
   return {
     id: partial.id ?? uid(),

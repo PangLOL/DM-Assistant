@@ -46,3 +46,19 @@ npm run preview
 ```
 
 GitHub Pages is served from `/DM-Assistant/` in production builds.
+
+## Phone / GitHub Pages
+
+Live URL once Pages is on: [https://panglol.github.io/DM-Assistant/](https://panglol.github.io/DM-Assistant/)
+
+This is a static site. Campaign notes, characters, and maps stay in **that browser’s localStorage** — they are not uploaded with the repo.
+
+On GitHub Free the repository must be **public** for Pages. Making it public publishes the app code, not your table notes.
+
+From a phone (Safari or Chrome → **Request Desktop Website**):
+
+1. Merge the open PR into `main`.
+2. [Change visibility](https://github.com/PangLOL/DM-Assistant/settings) → public (Danger Zone).
+3. [Pages settings](https://github.com/PangLOL/DM-Assistant/settings/pages) → **Source: GitHub Actions** → Save.
+4. Open [Actions](https://github.com/PangLOL/DM-Assistant/actions), wait for **Deploy GitHub Pages** to go green (or **Run workflow** if it did not start).
+5. Open the live URL above. Add to Home Screen if you want an icon.

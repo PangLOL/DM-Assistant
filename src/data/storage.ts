@@ -7,6 +7,7 @@ import type {
   Location,
   MapBoard,
   MapToken,
+  WalkCell,
   ModuleId,
   Npc,
   Player,
@@ -89,18 +90,50 @@ export function createNpc(partial?: Partial<Npc>): Npc {
   }
 }
 
+export const DEFAULT_MAP_SIZE = 8
+
+/** Every square starts open. The DM erases the ones that should block movement. */
+export function fullGrid(cols: number, rows: number): WalkCell[] {
+  const cells: WalkCell[] = []
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) cells.push({ x, y })
+  }
+  return cells
+}
+
+/**
+ * Cells the DM already erased stay erased. Squares added by growing the grid start painted.
+ */
+export function resizeWalkable(map: MapBoard, cols: number, rows: number): WalkCell[] {
+  const kept = map.walkable.filter(
+    (c) => c.x >= 0 && c.y >= 0 && c.x < cols && c.y < rows && c.x < map.cols && c.y < map.rows,
+  )
+  const have = new Set(kept.map((c) => `${c.x},${c.y}`))
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (x < map.cols && y < map.rows) continue
+      const key = `${x},${y}`
+      if (have.has(key)) continue
+      have.add(key)
+      kept.push({ x, y })
+    }
+  }
+  return kept
+}
+
 export function createMap(locationId: string, partial?: Partial<MapBoard>): MapBoard {
+  const cols = partial?.cols ?? DEFAULT_MAP_SIZE
+  const rows = partial?.rows ?? DEFAULT_MAP_SIZE
   return {
-    id: uid(),
+    id: partial?.id ?? uid(),
     locationId,
-    name: 'New map',
-    cols: 25,
-    rows: 25,
-    squareFeet: 5,
-    imageName: '',
-    imageDataUrl: '',
-    walkable: [],
-    ...partial,
+    name: partial?.name ?? 'New map',
+    cols,
+    rows,
+    squareFeet: partial?.squareFeet ?? 5,
+    imageName: partial?.imageName ?? '',
+    imageDataUrl: partial?.imageDataUrl ?? '',
+    walkable: partial?.walkable ?? fullGrid(cols, rows),
   }
 }
 
@@ -366,16 +399,11 @@ const seedData = (): AppData => {
 
   const groveMap = createMap(forest.id, {
     name: 'Grove path',
-    cols: 12,
-    rows: 12,
     imageName: 'grove-path.png',
-    walkable: (() => {
-      const cells = []
-      for (let y = 2; y <= 9; y++) {
-        for (let x = 2; x <= 9; x++) cells.push({ x, y })
-      }
-      return cells
-    })(),
+  })
+
+  const lanternMap = createMap(tavern.id, {
+    name: 'Lantern floor',
   })
 
   return normalizeData({
@@ -383,10 +411,10 @@ const seedData = (): AppData => {
     scenes: [groveGate, commonRoom],
     players: [player],
     npcs: [scout, keeper],
-    maps: [groveMap],
+    maps: [groveMap, lanternMap],
     tokens: [
-      createToken({ kind: 'player', characterId: player.id, mapId: groveMap.id, gx: 3, gy: 8 }),
-      createToken({ kind: 'npc', characterId: scout.id, mapId: groveMap.id, gx: 8, gy: 3 }),
+      createToken({ kind: 'player', characterId: player.id, mapId: groveMap.id, gx: 2, gy: 6 }),
+      createToken({ kind: 'npc', characterId: scout.id, mapId: groveMap.id, gx: 5, gy: 1 }),
     ],
     pendingAction: null,
     activeLocationId: forest.id,

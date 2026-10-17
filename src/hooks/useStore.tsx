@@ -19,6 +19,7 @@ import {
   createEncounter,
   createLocation,
   createMap,
+  resizeWalkable,
   createNpc,
   createPlayer,
   createScene,
@@ -179,10 +180,13 @@ export function StoreProvider({
 
   const addLocation = useCallback(() => {
     const loc = createLocation()
+    const map = createMap(loc.id, { name: loc.name })
     setData((d) => ({
       ...d,
       locations: [...d.locations, loc],
+      maps: [...d.maps, map],
       activeLocationId: loc.id,
+      activeMapId: map.id,
       activeSceneId: null,
     }))
     return loc.id
@@ -425,7 +429,21 @@ export function StoreProvider({
   }, [])
 
   const updateMap = useCallback((id: string, patch: Partial<MapBoard>) => {
-    setData((d) => ({ ...d, maps: updateList(d.maps, id, patch) }))
+    setData((d) => ({
+      ...d,
+      maps: d.maps.map((m) => {
+        if (m.id !== id) return m
+        const next = { ...m, ...patch }
+        if ((patch.cols != null || patch.rows != null) && patch.walkable == null) {
+          const cols = Math.max(2, next.cols)
+          const rows = Math.max(2, next.rows)
+          next.cols = cols
+          next.rows = rows
+          next.walkable = resizeWalkable(m, cols, rows)
+        }
+        return next
+      }),
+    }))
   }, [])
 
   const deleteMap = useCallback((id: string) => {

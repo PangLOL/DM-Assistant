@@ -30,7 +30,7 @@ export function MapView() {
   const bus = useTableBus()
 
   const [paint, setPaint] = useState(false)
-  const [erase, setErase] = useState(false)
+  const [erase, setErase] = useState(true)
   const [brush, setBrush] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const brushRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const dragOrigin = useRef<{ x: number; y: number } | null>(null)
@@ -263,7 +263,7 @@ export function MapView() {
           <h2>{map?.name ?? 'No map'}</h2>
           <p className="lede">
             {role === 'dm'
-              ? 'Drag to paint the ground. Outlined squares are a legal move; outlined tokens are in attack range. Players join with a room code and never see your notes.'
+              ? 'The grid starts fully painted. Erase the squares you do not want. Outlined squares are a legal move, and outlined tokens are in range.'
               : 'Pick your character. Outlined squares are in reach. Outlined tokens are in range. Tap one, and the DM accepts or declines on their device.'}
           </p>
         </div>
@@ -456,7 +456,9 @@ export function MapView() {
       {moveHint || attackHint ? <p className="hint map-msg">{moveHint || attackHint}</p> : null}
       {role === 'dm' && paint ? (
         <p className="hint map-msg">
-          {erase ? 'Drag a rectangle to erase ground.' : 'Drag a rectangle to paint ground. One cell is a tap.'}
+          {erase
+            ? 'Drag a rectangle to erase squares. Switch off Erase to paint them back.'
+            : 'Drag a rectangle to paint squares back.'}
         </p>
       ) : null}
 

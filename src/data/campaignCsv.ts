@@ -13,7 +13,7 @@ import type {
 import { DEFAULT_MODULES, DEFAULT_THEME, emptyStats } from '../types'
 import { downloadText, parseCsv, toCsv } from '../lib/csv'
 import { downloadPortraitFile, safeCharacterFilename, sanitizePortraitDataUrl } from '../lib/portrait'
-import { createPlayer, uid } from './storage'
+import { createPlayer, fullGrid, uid } from './storage'
 
 export type CampaignSlice = 'config' | 'music' | 'map' | 'save'
 
@@ -192,12 +192,15 @@ export function applyMapsCsv(
       id,
       locationId: row.locationId || data.activeLocationId || '',
       name: row.name || 'Map',
-      cols: Math.max(1, Number(row.cols || 25)),
-      rows: Math.max(1, Number(row.rows || 25)),
+      cols: Math.max(1, Number(row.cols || 8)),
+      rows: Math.max(1, Number(row.rows || 8)),
       squareFeet: Math.max(1, Number(row.squareFeet || 5)),
       imageName,
       imageDataUrl: extras?.imageByName?.[imageName] ?? existing?.imageDataUrl ?? '',
-      walkable: extras?.walkByMapId?.[id] ?? existing?.walkable ?? [],
+      walkable:
+        extras?.walkByMapId?.[id] ??
+        existing?.walkable ??
+        fullGrid(Math.max(1, Number(row.cols || 8)), Math.max(1, Number(row.rows || 8))),
     }
   })
   const mapIds = new Set(maps.map((m) => m.id))

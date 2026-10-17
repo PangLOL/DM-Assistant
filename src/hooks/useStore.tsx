@@ -36,8 +36,8 @@ import {
   chebyshev,
   effectiveAc,
   isWalkable,
-  pathIsWalkable,
   rollDiceExpr,
+  routeCost,
   squaresToFeet,
 } from '../lib/rules5e'
 import type {
@@ -545,18 +545,27 @@ export function StoreProvider({
             error = 'That square is not on the painted map.'
             return d
           }
+          if (tx === token.gx && ty === token.gy) {
+            error = 'Pick a different square.'
+            return d
+          }
           if (d.tokens.some((t) => t.mapId === map.id && t.gx === tx && t.gy === ty && t.id !== token.id)) {
             error = 'That square is occupied.'
             return d
           }
-          const squares = chebyshev(token.gx, token.gy, tx, ty)
-          const feet = squaresToFeet(squares, map.squareFeet)
-          if (!pathIsWalkable(map.walkable, token.gx, token.gy, tx, ty)) {
-            error = 'Path leaves the painted map.'
+          const blocked = new Set(
+            d.tokens
+              .filter((t) => t.mapId === map.id && t.id !== token.id)
+              .map((t) => `${t.gx},${t.gy}`),
+          )
+          const squares = routeCost(map.walkable, token.gx, token.gy, tx, ty, blocked)
+          if (squares == null) {
+            error = 'No painted route to that square.'
             return d
           }
+          const feet = squaresToFeet(squares, map.squareFeet)
           if (feet > stats.speedFt) {
-            error = `Move is ${feet} ft; speed is ${stats.speedFt} ft.`
+            error = `Route is ${feet} ft; speed is ${stats.speedFt} ft.`
             return d
           }
           preview = `${actorName(d, input.actorKind, input.actorId)} moves ${squares} squares (${feet} ft) to ${tx},${ty}.`
@@ -579,6 +588,10 @@ export function StoreProvider({
             chebyshev(token.gx, token.gy, targetToken.gx, targetToken.gy),
             map.squareFeet,
           )
+          if (dist > stats.rangeFt) {
+            error = `Target is ${dist} ft away; reach is ${stats.rangeFt} ft.`
+            return d
+          }
           const ac = effectiveAc(targetStats)
           const result = attackPreview(stats, ac, input.d20, dist)
           preview = `${actorName(d, input.actorKind, input.actorId)} attacks ${actorName(d, targetToken.kind, targetToken.characterId)}: ${result.summary}. Damage dice ${stats.damageDice}.`

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type PointerEvent } from 'react'
 import { CharacterSheet } from '../components/CharacterSheet'
 import { blobToDataUrl } from '../lib/csv'
-import { rollD20 } from '../lib/rules5e'
+import { cellKey, chebyshev, reachableSquares, rectCells, rollD20, speedSquares, squaresToFeet } from '../lib/rules5e'
 import { useRole } from '../hooks/useRole'
 import { useStore } from '../hooks/useStore'
 import { useTableBus } from '../hooks/useTableBus'
@@ -21,7 +21,7 @@ export function MapView() {
     updateMap,
     deleteMap,
     setActiveMap,
-    toggleWalkable,
+    paintWalkableRect,
     placeOrMoveToken,
     proposeAction,
     clearPending,
@@ -30,6 +30,11 @@ export function MapView() {
   const bus = useTableBus()
 
   const [paint, setPaint] = useState(false)
+  const [erase, setErase] = useState(false)
+  const [brush, setBrush] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const brushRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const dragOrigin = useRef<{ x: number; y: number } | null>(null)
+  const boardRef = useRef<HTMLDivElement>(null)
   const [actorKey, setActorKey] = useState('')
   const [action, setAction] = useState<TableAction>('move')
   const [d20, setD20] = useState('')
@@ -75,10 +80,7 @@ export function MapView() {
 
   const onCell = (x: number, y: number) => {
     if (!map) return
-    if (role === 'dm' && paint) {
-      toggleWalkable(map.id, x, y)
-      return
-    }
+    if (role === 'dm' && paint) return
     if (!actor) {
       setMessage('Select a character first.')
       return
@@ -152,6 +154,107 @@ export function MapView() {
     updateMap(map.id, { imageDataUrl: url, imageName: file.name })
   }
 
+  const actorToken = actor
+    ? (tokens.find((t) => t.kind === actor.kind && t.characterId === actor.id) ?? null)
+    : null
+  const actorStats = actor
+    ? actor.kind === 'player'
+      ? (data.players.find((p) => p.id === actor.id)?.stats ?? null)
+      : (data.npcs.find((n) => n.id === actor.id)?.stats ?? null)
+    : null
+
+  const walkSet = new Set((map?.walkable ?? []).map((c) => cellKey(c.x, c.y)))
+  const blocked = new Set(
+    tokens.filter((t) => t.id !== actorToken?.id).map((t) => cellKey(t.gx, t.gy)),
+  )
+  const reach =
+    map && actorToken && actorStats && !paint && action === 'move'
+      ? reachableSquares(
+          map.walkable,
+          actorToken.gx,
+          actorToken.gy,
+          speedSquares(actorStats.speedFt, map.squareFeet),
+          blocked,
+        )
+      : new Map<string, number>()
+  const attackTargets = new Set<string>()
+  if (map && actorToken && actorStats && !paint && action === 'attack') {
+    for (const token of tokens) {
+      if (token.id === actorToken.id) continue
+      const dist = squaresToFeet(
+        chebyshev(actorToken.gx, actorToken.gy, token.gx, token.gy),
+        map.squareFeet,
+      )
+      if (dist <= actorStats.rangeFt) attackTargets.add(cellKey(token.gx, token.gy))
+    }
+  }
+
+  const cellAt = (event: PointerEvent<HTMLDivElement>) => {
+    const board = boardRef.current
+    if (!board || !map) return null
+    const rect = board.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return null
+    const x = Math.min(map.cols - 1, Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * map.cols)))
+    const y = Math.min(map.rows - 1, Math.max(0, Math.floor(((event.clientY - rect.top) / rect.height) * map.rows)))
+    return { x, y }
+  }
+
+  const onBoardPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (role !== 'dm' || !paint || !map) return
+    const cell = cellAt(event)
+    if (!cell) return
+    event.preventDefault()
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Synthetic events used in checks cannot capture the pointer.
+    }
+    dragOrigin.current = cell
+    const stroke = { x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y }
+    brushRef.current = stroke
+    setBrush(stroke)
+  }
+
+  const onBoardPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const origin = dragOrigin.current
+    if (!origin || !paint) return
+    const cell = cellAt(event)
+    if (!cell) return
+    const stroke = { x0: origin.x, y0: origin.y, x1: cell.x, y1: cell.y }
+    brushRef.current = stroke
+    setBrush(stroke)
+  }
+
+  const onBoardPointerUp = () => {
+    const stroke = brushRef.current
+    brushRef.current = null
+    dragOrigin.current = null
+    setBrush(null)
+    if (!stroke || !map || role !== 'dm' || !paint) return
+    paintWalkableRect(map.id, rectCells(stroke.x0, stroke.y0, stroke.x1, stroke.y1), !erase)
+  }
+
+  const brushSet = brush
+    ? new Set(rectCells(brush.x0, brush.y0, brush.x1, brush.y1).map((c) => cellKey(c.x, c.y)))
+    : new Set<string>()
+
+  const moveHint =
+    action === 'move' && actor && actorStats && !paint
+      ? actorToken
+        ? reach.size > 0
+          ? `${reach.size} outlined squares are in reach (${actorStats.speedFt} ft). Tap one.`
+          : 'No painted route from this token. Drag a connected clearing, then tap an outlined square.'
+        : 'This character has no token on the map yet.'
+      : null
+  const attackHint =
+    action === 'attack' && actor && actorStats && !paint
+      ? actorToken
+        ? attackTargets.size > 0
+          ? `${attackTargets.size} outlined token${attackTargets.size === 1 ? '' : 's'} within ${actorStats.rangeFt} ft. Tap one.`
+          : `No token within ${actorStats.rangeFt} ft. Move closer, then attack.`
+        : 'This character has no token on the map yet.'
+      : null
+
   return (
     <div className="view map-view">
       <header className="dashboard-header">
@@ -160,8 +263,8 @@ export function MapView() {
           <h2>{map?.name ?? 'No map'}</h2>
           <p className="lede">
             {role === 'dm'
-              ? 'Paint walkable squares over the image, place tokens, then run move/attack. Players join with a room code — they never see your desktop notes.'
-              : 'Pick your character, choose Move or Attack, tap the grid, then Propose. The DM accepts or declines on their device.'}
+              ? 'Drag to paint the ground. Outlined squares are a legal move; outlined tokens are in attack range. Players join with a room code and never see your notes.'
+              : 'Pick your character. Outlined squares are in reach. Outlined tokens are in range. Tap one, and the DM accepts or declines on their device.'}
           </p>
         </div>
       </header>
@@ -230,7 +333,34 @@ export function MapView() {
                 className={`btn btn--sm${paint ? ' btn--accent' : ''}`}
                 onClick={() => setPaint((v) => !v)}
               >
-                {paint ? 'Painting walkable' : 'Paint walkable'}
+                {paint ? 'Painting' : 'Paint ground'}
+              </button>
+              {paint ? (
+                <button
+                  type="button"
+                  className={`btn btn--sm${erase ? ' btn--accent' : ''}`}
+                  onClick={() => setErase((v) => !v)}
+                >
+                  {erase ? 'Erasing' : 'Erase'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() =>
+                  paintWalkableRect(map.id, rectCells(0, 0, map.cols - 1, map.rows - 1), true)
+                }
+              >
+                Fill map
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => {
+                  if (confirm('Clear all painted squares on this map?')) updateMap(map.id, { walkable: [] })
+                }}
+              >
+                Clear paint
               </button>
               <button
                 type="button"
@@ -323,26 +453,40 @@ export function MapView() {
         </div>
       ) : null}
 
+      {moveHint || attackHint ? <p className="hint map-msg">{moveHint || attackHint}</p> : null}
+      {role === 'dm' && paint ? (
+        <p className="hint map-msg">
+          {erase ? 'Drag a rectangle to erase ground.' : 'Drag a rectangle to paint ground. One cell is a tap.'}
+        </p>
+      ) : null}
+
       {map ? (
         <div
-          className="map-board"
+          ref={boardRef}
+          className={`map-board${paint ? ' is-painting' : ''}`}
           style={{
             gridTemplateColumns: `repeat(${map.cols}, 1fr)`,
             gridTemplateRows: `repeat(${map.rows}, 1fr)`,
           }}
+          onPointerDown={onBoardPointerDown}
+          onPointerMove={onBoardPointerMove}
+          onPointerUp={onBoardPointerUp}
+          onPointerCancel={onBoardPointerUp}
         >
           {map.imageDataUrl ? (
             <img className="map-board__image" src={map.imageDataUrl} alt="" />
           ) : null}
           {Array.from({ length: map.rows }).map((_, y) =>
             Array.from({ length: map.cols }).map((__, x) => {
-              const walk = map.walkable.some((c) => c.x === x && c.y === y)
+              const key = cellKey(x, y)
+              const walk = walkSet.has(key)
               const tok = tokens.find((t) => t.gx === x && t.gy === y)
+              const inBrush = brushSet.has(key)
               return (
                 <button
-                  key={`${x}-${y}`}
+                  key={key}
                   type="button"
-                  className={`map-cell${walk ? ' is-walk' : ''}${tok ? ' has-token' : ''}`}
+                  className={`map-cell${walk ? ' is-walk' : ''}${tok ? ' has-token' : ''}${reach.has(key) ? ' is-reach' : ''}${attackTargets.has(key) ? ' is-target' : ''}${inBrush ? ' is-brush' : ''}`}
                   onClick={() => onCell(x, y)}
                 >
                   {tok ? (

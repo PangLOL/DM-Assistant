@@ -153,6 +153,10 @@ export type PendingAction = {
   advantage: boolean
   disadvantage: boolean
   preview: string
+  /** Movement spent, in feet. Null for attacks. */
+  feet: number | null
+  /** Damage rolled at propose time. Null for moves. A miss is 0. */
+  damage: number | null
 }
 
 export type WorkspaceMode = 'desktop' | 'map'

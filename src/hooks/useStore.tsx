@@ -113,7 +113,8 @@ type StoreContextValue = {
     d20?: number | null
     advantage?: boolean
     disadvantage?: boolean
-  }) => string | null
+    damage?: number | null
+  }) => { error: string | null; feet: number | null; damage: number | null }
   clearPending: () => void
   resolvePending: (mode: ResolveMode, extra?: { modifier?: number; manualHp?: number; note?: string }) => string
   applyCsvSlice: (slice: CampaignSlice, csv: string, extras?: { walkByMapId?: Record<string, WalkCell[]>; imageByName?: Record<string, string> }) => void
@@ -543,8 +544,11 @@ export function StoreProvider({
       d20?: number | null
       advantage?: boolean
       disadvantage?: boolean
+      damage?: number | null
     }) => {
       let error: string | null = null
+      let feet: number | null = null
+      let damage: number | null = null
       setData((d) => {
         const map = d.maps.find((m) => m.id === d.activeMapId)
         const token = d.tokens.find(
@@ -586,7 +590,7 @@ export function StoreProvider({
             error = 'No painted route to that square.'
             return d
           }
-          const feet = squaresToFeet(squares, map.squareFeet)
+          feet = squaresToFeet(squares, map.squareFeet)
           if (feet > stats.speedFt) {
             error = `Route is ${feet} ft; speed is ${stats.speedFt} ft.`
             return d
@@ -617,7 +621,15 @@ export function StoreProvider({
           }
           const ac = effectiveAc(targetStats)
           const result = attackPreview(stats, ac, input.d20, dist)
-          preview = `${actorName(d, input.actorKind, input.actorId)} attacks ${actorName(d, targetToken.kind, targetToken.characterId)}: ${result.summary}. Damage dice ${stats.damageDice}.`
+          if (typeof input.damage === 'number' && Number.isFinite(input.damage)) {
+            damage = input.damage
+          } else if (result.hit) {
+            const rolled = rollDiceExpr(stats.damageDice)
+            damage = result.crit ? rolled.total + rollDiceExpr(stats.damageDice).total : rolled.total
+          } else {
+            damage = 0
+          }
+          preview = `${actorName(d, input.actorKind, input.actorId)} attacks ${actorName(d, targetToken.kind, targetToken.characterId)}: ${result.summary}. Damage ${damage} (${stats.damageDice}).`
         }
 
         return {
@@ -634,10 +646,12 @@ export function StoreProvider({
             advantage: Boolean(input.advantage),
             disadvantage: Boolean(input.disadvantage),
             preview,
+            feet,
+            damage,
           },
         }
       })
-      return error
+      return { error, feet, damage }
     },
     [],
   )
@@ -865,19 +879,25 @@ function settlePending(
       message: `${result.summary} No damage.`,
     }
   }
+  const stored = pending.damage
   const rolled = rollDiceExpr(attacker.damageDice)
-  let damage = result.crit ? rolled.total + rollDiceExpr(attacker.damageDice).total : rolled.total
-  if (mode === 'modifier') damage += extra?.modifier ?? 0
-  if (!result.hit && mode === 'modifier' && (extra?.modifier ?? 0) === 0) {
+  let damage =
+    typeof stored === 'number' && Number.isFinite(stored)
+      ? stored
+      : result.crit
+        ? rolled.total + rollDiceExpr(attacker.damageDice).total
+        : rolled.total
+  const mod = mode === 'modifier' ? (extra?.modifier ?? 0) : 0
+  damage += mod
+  if (!result.hit && mode === 'modifier' && mod === 0) {
     return {
       data: { ...d, pendingAction: null },
       message: `${result.summary} Miss — no modifier applied.`,
     }
   }
   const nextHp = Math.max(0, defender.hp - Math.max(0, damage))
-  const message = `${result.summary} Damage ${damage} (${attacker.damageDice}${
-    mode === 'modifier' && extra?.modifier ? ` + ${extra.modifier}` : ''
-  }). HP ${defender.hp} → ${nextHp}.`
+  const modTxt = mod === 0 ? '' : mod > 0 ? ` + ${mod}` : ` − ${Math.abs(mod)}`
+  const message = `${result.summary} Damage ${damage} (${attacker.damageDice}${modTxt}). HP ${defender.hp} → ${nextHp}.`
   return { data: patchHp(d, targetToken, nextHp, message), message }
 }
 

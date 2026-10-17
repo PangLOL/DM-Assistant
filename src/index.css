@@ -1339,12 +1339,17 @@ code {
   margin-bottom: 0.85rem;
 }
 
-.map-board {
+.map-frame {
   position: relative;
-  display: grid;
-  width: min(100%, 920px);
+  width: min(100%, 72dvh, 760px);
   aspect-ratio: 1;
   margin: 0 auto 1rem;
+}
+
+.map-board {
+  position: absolute;
+  inset: 0;
+  display: grid;
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
@@ -1382,6 +1387,11 @@ code {
 
 .map-cell.is-target {
   box-shadow: inset 0 0 0 2px rgba(214, 96, 84, 0.95);
+}
+
+.map-cell.is-dest {
+  z-index: 2;
+  box-shadow: inset 0 0 0 3px #f4e2a8;
 }
 
 .map-cell.is-brush {
@@ -1423,9 +1433,142 @@ code {
   background: #8f3a32;
 }
 
-.pending-panel {
-  margin: 0 auto 1rem;
-  max-width: 920px;
+.map-route {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.map-pin {
+  position: absolute;
+  z-index: 4;
+  width: min(15.5rem, calc(100% - 16px));
+  padding: 0.55rem 0.7rem 0.65rem;
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.map-pin.is-measuring {
+  visibility: hidden;
+}
+
+.map-pin__kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.map-pin__value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+}
+
+.map-pin__value strong {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  line-height: 1;
+  min-width: 4.6rem;
+  text-align: center;
+}
+
+.map-pin__nudge {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.map-pin__nudge:disabled {
+  opacity: 0.35;
+}
+
+.map-pin__unit {
+  margin: 0.1rem 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.map-pin__caption {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.map-pin__modify {
+  width: 100%;
+  margin-top: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+.map-pin__modify.is-on {
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+  color: #fff;
+}
+
+.map-pin__actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.map-pin__actions .btn {
+  flex: 1;
+}
+
+.map-pin__wait {
+  margin: 0.45rem 0 0;
+  text-align: center;
+  font-size: 0.82rem;
+}
+
+.map-pin__tail {
+  position: absolute;
+  left: var(--tail-x, 50%);
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+}
+
+.map-pin.is-above .map-pin__tail {
+  bottom: -9px;
+  border-width: 10px 8px 0;
+  border-style: solid;
+  border-color: var(--panel) transparent transparent;
+}
+
+.map-pin.is-below .map-pin__tail {
+  top: -9px;
+  border-width: 0 8px 10px;
+  border-style: solid;
+  border-color: transparent transparent var(--panel);
 }
 
 .room-code {

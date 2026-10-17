@@ -12,6 +12,8 @@ export type TablePropose = {
   d20: number | null
   advantage: boolean
   disadvantage: boolean
+  feet?: number | null
+  damage?: number | null
 }
 
 export type TableStateMsg = {

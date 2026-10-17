@@ -101,6 +101,54 @@ export function reachableSquares(
   return dist
 }
 
+/**
+ * Painted route from the origin square to the destination, inclusive.
+ * Null when no route exists. The destination is the last cell.
+ */
+export function routePath(
+  walkable: WalkCell[],
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  blocked: ReadonlySet<string> = new Set(),
+): WalkCell[] | null {
+  if (x0 === x1 && y0 === y1) return [{ x: x0, y: y0 }]
+  const open = walkableKeys(walkable)
+  const goal = cellKey(x1, y1)
+  if (!open.has(goal) || blocked.has(goal)) return null
+  const start = cellKey(x0, y0)
+  const queue: Array<{ x: number; y: number }> = [{ x: x0, y: y0 }]
+  const prev = new Map<string, string>()
+  const seen = new Set<string>([start])
+  for (let i = 0; i < queue.length; i++) {
+    const { x, y } = queue[i]
+    const here = cellKey(x, y)
+    for (const [dx, dy] of EIGHT_NEIGHBORS) {
+      const nx = x + dx
+      const ny = y + dy
+      const key = cellKey(nx, ny)
+      if (seen.has(key) || !open.has(key) || blocked.has(key)) continue
+      seen.add(key)
+      prev.set(key, here)
+      if (key === goal) {
+        const path: WalkCell[] = []
+        let cursor: string | undefined = key
+        while (cursor) {
+          const [px, py] = cursor.split(',').map(Number)
+          path.push({ x: px, y: py })
+          if (cursor === start) break
+          cursor = prev.get(cursor)
+        }
+        path.reverse()
+        return path
+      }
+      queue.push({ x: nx, y: ny })
+    }
+  }
+  return null
+}
+
 /** Step count of a painted route, or null when no route exists. */
 export function routeCost(
   walkable: WalkCell[],
@@ -110,27 +158,9 @@ export function routeCost(
   y1: number,
   blocked: ReadonlySet<string> = new Set(),
 ): number | null {
-  if (x0 === x1 && y0 === y1) return 0
-  const open = walkableKeys(walkable)
-  const goal = cellKey(x1, y1)
-  if (!open.has(goal) || blocked.has(goal)) return null
-  const start = cellKey(x0, y0)
-  const queue: Array<{ x: number; y: number; d: number }> = [{ x: x0, y: y0, d: 0 }]
-  const seen = new Set<string>([start])
-  for (let i = 0; i < queue.length; i++) {
-    const { x, y, d } = queue[i]
-    for (const [dx, dy] of EIGHT_NEIGHBORS) {
-      const nx = x + dx
-      const ny = y + dy
-      const key = cellKey(nx, ny)
-      if (seen.has(key) || !open.has(key) || blocked.has(key)) continue
-      const next = d + 1
-      if (key === goal) return next
-      seen.add(key)
-      queue.push({ x: nx, y: ny, d: next })
-    }
-  }
-  return null
+  const path = routePath(walkable, x0, y0, x1, y1, blocked)
+  if (!path) return null
+  return Math.max(0, path.length - 1)
 }
 
 /** Separate painted areas. A platform the party cannot walk to is its own region. */

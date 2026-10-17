@@ -289,6 +289,8 @@ const SAVE_HEADERS = [
   'advantage',
   'disadvantage',
   'preview',
+  'feet',
+  'damage',
   'hp',
   'maxHp',
   'skillPoints',
@@ -363,6 +365,8 @@ export function exportSaveCsv(data: AppData): string {
       advantage: p.advantage,
       disadvantage: p.disadvantage,
       preview: p.preview,
+      feet: p.feet ?? '',
+      damage: p.damage ?? '',
     })
   }
   return toCsv(SAVE_HEADERS, rows)
@@ -420,6 +424,8 @@ export function applySaveCsv(data: AppData, csv: string): AppData {
         advantage: row.advantage === 'true',
         disadvantage: row.disadvantage === 'true',
         preview: row.preview || '',
+        feet: row.feet === '' || row.feet == null ? null : Number(row.feet),
+        damage: row.damage === '' || row.damage == null ? null : Number(row.damage),
       }
     }
   }

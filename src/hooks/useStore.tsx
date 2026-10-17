@@ -648,74 +648,11 @@ export function StoreProvider({
 
   const resolvePending = useCallback(
     (mode: ResolveMode, extra?: { modifier?: number; manualHp?: number; note?: string }) => {
-      let message = 'Declined.'
-      setData((d) => {
-        const pending = d.pendingAction
-        if (!pending) {
-          message = 'Nothing pending.'
-          return d
-        }
-        const map = d.maps.find((m) => m.id === d.activeMapId)
-        const token = d.tokens.find(
-          (t) => t.kind === pending.actorKind && t.characterId === pending.actorId,
-        )
-        if (!map || !token) {
-          message = 'Actor token missing.'
-          return { ...d, pendingAction: null }
-        }
-
-        if (pending.action === 'move') {
-          const gx = pending.targetGx
-          const gy = pending.targetGy
-          if (gx == null || gy == null) return { ...d, pendingAction: null }
-          message = extra?.note || pending.preview
-          return {
-            ...d,
-            pendingAction: null,
-            tokens: d.tokens.map((t) => (t.id === token.id ? { ...t, gx, gy } : t)),
-          }
-        }
-
-        const targetToken = d.tokens.find((t) => t.id === pending.targetId)
-        if (!targetToken) return { ...d, pendingAction: null }
-        const attacker = actorStats(d, pending.actorKind, pending.actorId)
-        const defender = actorStats(d, targetToken.kind, targetToken.characterId)
-        if (!attacker || !defender) return { ...d, pendingAction: null }
-
-        const dist = squaresToFeet(
-          chebyshev(token.gx, token.gy, targetToken.gx, targetToken.gy),
-          map.squareFeet,
-        )
-        const result = attackPreview(attacker, effectiveAc(defender), pending.d20 ?? 1, dist)
-        let damage = 0
-        if (mode === 'manual' && extra?.manualHp != null) {
-          const nextHp = extra.manualHp
-          message = extra.note || `Manual HP set to ${nextHp}.`
-          return patchHp(d, targetToken, nextHp, message)
-        }
-        if (!result.hit && mode === 'rules') {
-          message = `${result.summary} No damage.`
-          return { ...d, pendingAction: null }
-        }
-        const rolled = rollDiceExpr(attacker.damageDice)
-        damage = result.crit ? rolled.total + rollDiceExpr(attacker.damageDice).total : rolled.total
-        if (mode === 'modifier') damage += extra?.modifier ?? 0
-        if (!result.hit && mode === 'modifier') {
-          // still allow DM spice on a miss
-          if ((extra?.modifier ?? 0) === 0) {
-            message = `${result.summary} Miss — no modifier applied.`
-            return { ...d, pendingAction: null }
-          }
-        }
-        const nextHp = Math.max(0, defender.hp - Math.max(0, damage))
-        message = `${result.summary} Damage ${damage} (${attacker.damageDice}${
-          mode === 'modifier' && extra?.modifier ? ` + ${extra.modifier}` : ''
-        }). HP ${defender.hp} → ${nextHp}.`
-        return patchHp(d, targetToken, nextHp, message)
-      })
-      return message
+      const settled = settlePending(data, mode, extra)
+      setData(settled.data)
+      return settled.message
     },
-    [],
+    [data],
   )
 
   const applyCsvSlice = useCallback(
@@ -869,6 +806,79 @@ export function StoreProvider({
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+}
+
+function settlePending(
+  d: AppData,
+  mode: ResolveMode,
+  extra?: { modifier?: number; manualHp?: number; note?: string },
+): { data: AppData; message: string } {
+  const pending = d.pendingAction
+  if (!pending) return { data: d, message: 'Nothing pending.' }
+  const map = d.maps.find((m) => m.id === d.activeMapId)
+  const token = d.tokens.find(
+    (t) => t.kind === pending.actorKind && t.characterId === pending.actorId,
+  )
+  if (!map || !token) {
+    return { data: { ...d, pendingAction: null }, message: 'Actor token missing.' }
+  }
+
+  if (pending.action === 'move') {
+    const gx = pending.targetGx
+    const gy = pending.targetGy
+    if (gx == null || gy == null) {
+      return { data: { ...d, pendingAction: null }, message: 'That move has no destination.' }
+    }
+    return {
+      data: {
+        ...d,
+        pendingAction: null,
+        tokens: d.tokens.map((t) => (t.id === token.id ? { ...t, gx, gy } : t)),
+      },
+      message: extra?.note || pending.preview,
+    }
+  }
+
+  const targetToken = d.tokens.find((t) => t.id === pending.targetId)
+  if (!targetToken) {
+    return { data: { ...d, pendingAction: null }, message: 'That target is no longer on the map.' }
+  }
+  const attacker = actorStats(d, pending.actorKind, pending.actorId)
+  const defender = actorStats(d, targetToken.kind, targetToken.characterId)
+  if (!attacker || !defender) {
+    return { data: { ...d, pendingAction: null }, message: 'That creature has no stats.' }
+  }
+
+  const dist = squaresToFeet(
+    chebyshev(token.gx, token.gy, targetToken.gx, targetToken.gy),
+    map.squareFeet,
+  )
+  const result = attackPreview(attacker, effectiveAc(defender), pending.d20 ?? 1, dist)
+  if (mode === 'manual' && extra?.manualHp != null) {
+    const nextHp = extra.manualHp
+    const message = extra.note || `Manual HP set to ${nextHp}.`
+    return { data: patchHp(d, targetToken, nextHp, message), message }
+  }
+  if (!result.hit && mode === 'rules') {
+    return {
+      data: { ...d, pendingAction: null },
+      message: `${result.summary} No damage.`,
+    }
+  }
+  const rolled = rollDiceExpr(attacker.damageDice)
+  let damage = result.crit ? rolled.total + rollDiceExpr(attacker.damageDice).total : rolled.total
+  if (mode === 'modifier') damage += extra?.modifier ?? 0
+  if (!result.hit && mode === 'modifier' && (extra?.modifier ?? 0) === 0) {
+    return {
+      data: { ...d, pendingAction: null },
+      message: `${result.summary} Miss — no modifier applied.`,
+    }
+  }
+  const nextHp = Math.max(0, defender.hp - Math.max(0, damage))
+  const message = `${result.summary} Damage ${damage} (${attacker.damageDice}${
+    mode === 'modifier' && extra?.modifier ? ` + ${extra.modifier}` : ''
+  }). HP ${defender.hp} → ${nextHp}.`
+  return { data: patchHp(d, targetToken, nextHp, message), message }
 }
 
 function patchHp(

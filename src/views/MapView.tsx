@@ -599,7 +599,14 @@ export function MapView() {
                 >
                   Accept + set HP
                 </button>
-                <button type="button" className="btn btn--danger" onClick={() => clearPending()}>
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  onClick={() => {
+                    clearPending()
+                    setMessage('Declined.')
+                  }}
+                >
                   Decline
                 </button>
               </div>
